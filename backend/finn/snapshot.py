@@ -9,7 +9,7 @@ import json
 import sqlite3
 from datetime import datetime, timezone
 
-from . import db
+from . import db, llm
 from .alerts import vol_ratio
 from .classify import AMBIGUOUS, classify
 from .config import (BASE_WEIGHT, DEFAULT_SETTINGS, FRONTEND_SNAPSHOT_PATH, MATERIAL_THRESHOLD,
@@ -112,6 +112,8 @@ def build(conn: sqlite3.Connection) -> dict:
         "portfolio": portfolio,
         "market": market,
         "announcements": anns,
+        # What the model steps cost to produce this data, with the per-task breakdown.
+        "stats": llm.stats(conn),
     }
 
 

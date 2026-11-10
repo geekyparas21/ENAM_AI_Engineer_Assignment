@@ -41,6 +41,12 @@ def get_snapshot() -> dict:
     return load_snapshot()
 
 
+@app.get("/api/stats")
+def get_stats() -> dict:
+    """Model usage and cost: totals and the per-task breakdown behind the README table."""
+    return load_snapshot().get("stats") or {"calls": 0, "cached": 0, "tokens": 0, "cost_usd": None, "by_task": []}
+
+
 @app.get("/api/alerts")
 def get_alerts(
     volume_multiple: float = Query(DEFAULT_SETTINGS["volume_multiple"], gt=1, le=20),

@@ -1,6 +1,14 @@
-"""Classify, rank and export the snapshot. Safe to re-run: it only touches new rows.
+"""Classify, enrich, rank and export the snapshot. Safe to re-run: it only touches new rows.
 
 Run: python ingest/process.py
+
+Pipeline, cheapest step first:
+  1. rules classify every new filing (free);
+  2. the cheap model labels only what the rules could not place;
+  3. material filings get a card (results numbers, people, one-line summary);
+  4. everything is ranked in code and written to the snapshot the app reads.
+Steps 2 and the model parts of 3 are skipped when no model key is configured; the
+app still works, with results cards from the screener fallback.
 """
 from __future__ import annotations
 
@@ -10,27 +18,46 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "backend"))
 
-from finn import db, enrich, snapshot  # noqa: E402
+try:
+    from dotenv import load_dotenv
+    load_dotenv(Path(__file__).resolve().parents[1] / ".env")
+except ImportError:
+    pass
+
+from finn import db, enrich, llm, llm_tasks, snapshot  # noqa: E402
 
 
 def main() -> int:
     with db.session() as conn:
         counts = snapshot.classify_pending(conn)
         conn.commit()
-        cards = enrich.enrich_results(conn)
-        print(f"results cards: {cards}")
+        print(f"rules: {counts}")
+
+        if llm.available("cheap"):
+            try:
+                print(f"model-classified: {enrich.classify_ambiguous(conn)}")
+                print(f"results cards: {enrich.enrich_results(conn, llm_tasks.results_extractor(conn), redo_fallbacks=True)}")
+                print(f"people cards: {enrich.enrich_people(conn)}")
+                print(f"summaries: {enrich.enrich_summaries(conn)}")
+            except llm.LLMError as exc:
+                # A provider outage must not cost us the snapshot: keep what we have and carry on.
+                print(f"model step stopped early: {exc}")
+                print(f"results cards (fallback): {enrich.enrich_results(conn)}")
+        else:
+            print("no model key: skipping model steps")
+            print(f"results cards: {enrich.enrich_results(conn)}")
+
         snap = snapshot.build(conn)
     snapshot.write(snap)
 
     anns = snap["announcements"]
     material = [a for a in anns if a["score"] >= snap["material_threshold"]]
-    print(f"classified this run: {counts}")
     print(f"{len(anns)} filings, {len(material)} material, {len(anns) - len(material)} routine")
     for cat, n in collections.Counter(a["category"] for a in anns).most_common():
         print(f"  {n:>4} {cat}")
-    print("top 12:")
-    for a in sorted(anns, key=lambda x: (-x["score"], x["ts"]))[:12]:
-        print(f"  {a['score']:>5} {a['ts'][:10]} {a['symbol']:<11} {a['category']:<18} {(a['subject'] or '')[:70]}")
+    stats = snap["stats"]
+    print(f"model usage: {stats['calls']} calls ({stats['cached']} cached), {stats['tokens']} tokens, "
+          f"cost_usd={stats['cost_usd']}")
     return 0
 
 

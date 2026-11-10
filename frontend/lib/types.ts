@@ -99,5 +99,16 @@ export interface Snapshot {
   portfolio: Holding[];
   market: Record<string, MarketDay[]>;
   announcements: Announcement[];
-  stats?: { calls: number; tokens: number; cost_inr: number; cached: number } | null;
+  stats?: {
+    calls: number;
+    cached: number;
+    tokens: number;
+    cost_usd: number | null;   // null when a model's price is not configured: never invented
+    cost_inr: number | null;
+    usd_inr: number | null;
+    by_task: {
+      task: string; tier: string; model: string; calls: number; cached: number;
+      prompt_tokens: number; completion_tokens: number; cost_usd: number | null;
+    }[];
+  } | null;
 }

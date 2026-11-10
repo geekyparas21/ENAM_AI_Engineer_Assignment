@@ -184,12 +184,19 @@ function Ready({ snap, source, refreshing }: { snap: Snapshot; source: string; r
 
       <footer className="mt-5 space-y-1">
         <DataStamp snap={snap} source={source} refreshing={refreshing} />
-        {snap.stats && (
-          <p className="num text-[11px] text-faint">
-            Cost of this data: ₹{snap.stats.cost_inr.toFixed(2)} · {snap.stats.tokens.toLocaleString("en-IN")} tokens ·{" "}
-            {snap.stats.calls} model calls, {snap.stats.cached} served from cache
-          </p>
-        )}
+        <p className="num text-[11px] text-faint">
+          {snap.stats && snap.stats.calls > 0 ? (
+            <>
+              Model cost of this data:{" "}
+              {snap.stats.cost_inr !== null ? `₹${snap.stats.cost_inr.toFixed(2)}`
+                : snap.stats.cost_usd !== null ? `$${snap.stats.cost_usd.toFixed(4)}` : "not priced"}
+              {" · "}{snap.stats.tokens.toLocaleString("en-IN")} tokens · {snap.stats.calls} calls,{" "}
+              {snap.stats.cached} from cache
+            </>
+          ) : (
+            "Model cost of this data: ₹0. Classified by rules, numbers computed in code."
+          )}
+        </p>
       </footer>
     </>
   );

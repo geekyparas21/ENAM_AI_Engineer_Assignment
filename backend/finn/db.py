@@ -42,15 +42,42 @@ CREATE TABLE IF NOT EXISTS meta (
     key   TEXT PRIMARY KEY,
     value TEXT
 );
+
+-- Model responses keyed by (task, model, prompt): an identical question is never paid for twice.
+CREATE TABLE IF NOT EXISTS llm_cache (
+    key        TEXT PRIMARY KEY,
+    task       TEXT NOT NULL,
+    model      TEXT NOT NULL,
+    response   TEXT NOT NULL,
+    created_at TEXT NOT NULL
+);
+
+-- One row per model call, cached or not: the source of the cost table and the /stats page.
+CREATE TABLE IF NOT EXISTS llm_calls (
+    id                INTEGER PRIMARY KEY AUTOINCREMENT,
+    ts                TEXT NOT NULL,
+    task              TEXT NOT NULL,
+    tier              TEXT NOT NULL,
+    model             TEXT NOT NULL,
+    cached            INTEGER NOT NULL,
+    prompt_tokens     INTEGER NOT NULL,
+    completion_tokens INTEGER NOT NULL,
+    cost_usd          REAL,              -- NULL when the model's price is not configured
+    latency_ms        INTEGER NOT NULL
+);
 """
+
+
+def init(conn: sqlite3.Connection) -> sqlite3.Connection:
+    """Apply the schema to any connection (tests use an in-memory database)."""
+    conn.row_factory = sqlite3.Row
+    conn.executescript(SCHEMA)
+    return conn
 
 
 def connect() -> sqlite3.Connection:
     DATA_DIR.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    conn.executescript(SCHEMA)
-    return conn
+    return init(sqlite3.connect(DB_PATH))
 
 
 @contextmanager
