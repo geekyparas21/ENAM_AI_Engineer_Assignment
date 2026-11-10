@@ -1,0 +1,11 @@
+fastapi
+uvicorn[standard]
+requests
+pandas
+yfinance
+pymupdf
+pdfplumber
+beautifulsoup4
+lxml
+python-dotenv
+pytest

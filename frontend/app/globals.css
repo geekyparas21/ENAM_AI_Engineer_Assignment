@@ -1,0 +1,133 @@
+@import "tailwindcss";
+
+/* Tokens. Green and red mean direction only; cobalt is the single accent. */
+:root {
+  --bg: #f6f5f1;
+  --surface: #ffffff;
+  --sunken: #eeece6;
+  --ink: #15171c;
+  --muted: #666a73;
+  --faint: #9a9da5;
+  --line: #e2e0d8;
+  --accent: #2a50d8;
+  --accent-soft: #e6ebfb;
+  --up: #0b7a45;
+  --down: #c03226;
+  --warn: #9a6400;
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0d0e10;
+    --surface: #15171a;
+    --sunken: #1b1d21;
+    --ink: #eceae4;
+    --muted: #9296a0;
+    --faint: #686c75;
+    --line: #25282d;
+    --accent: #8ea6ff;
+    --accent-soft: #1a2140;
+    --up: #3fcf8e;
+    --down: #ff7366;
+    --warn: #e0a83a;
+    color-scheme: dark;
+  }
+}
+
+:root[data-theme="dark"] {
+  --bg: #0d0e10;
+  --surface: #15171a;
+  --sunken: #1b1d21;
+  --ink: #eceae4;
+  --muted: #9296a0;
+  --faint: #686c75;
+  --line: #25282d;
+  --accent: #8ea6ff;
+  --accent-soft: #1a2140;
+  --up: #3fcf8e;
+  --down: #ff7366;
+  --warn: #e0a83a;
+  color-scheme: dark;
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-sunken: var(--sunken);
+  --color-ink: var(--ink);
+  --color-muted: var(--muted);
+  --color-faint: var(--faint);
+  --color-line: var(--line);
+  --color-accent: var(--accent);
+  --color-accent-soft: var(--accent-soft);
+  --color-up: var(--up);
+  --color-down: var(--down);
+  --color-warn: var(--warn);
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Numbers line up in columns everywhere. */
+.num {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Tickers are the only thing set in mono: they read as identifiers, not prose. */
+.tick {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+}
+
+.label {
+  font-size: 11px;
+  line-height: 16px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  scrollbar-width: none;
+}
+
+.skeleton {
+  background: linear-gradient(90deg, var(--sunken) 0%, var(--line) 50%, var(--sunken) 100%);
+  background-size: 200% 100%;
+  animation: shimmer 1.4s linear infinite;
+  border-radius: 6px;
+}
+@keyframes shimmer {
+  to {
+    background-position: -200% 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .skeleton {
+    animation: none;
+  }
+}
+
+input[type="range"] {
+  accent-color: var(--accent);
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}

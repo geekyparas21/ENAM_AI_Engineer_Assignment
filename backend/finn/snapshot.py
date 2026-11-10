@@ -15,6 +15,7 @@ from .classify import AMBIGUOUS, classify
 from .config import (BASE_WEIGHT, DEFAULT_SETTINGS, FRONTEND_SNAPSHOT_PATH, MATERIAL_THRESHOLD,
                      PORTFOLIO, SNAPSHOT_PATH)
 from .prioritise import score
+from .titles import clean_title, fiscal_period
 
 MARKET_DAYS = 30
 
@@ -68,6 +69,8 @@ def build(conn: sqlite3.Connection) -> dict:
             "ts": a["ts"],
             "exch_category": a["exch_category"],
             "subject": a["subject"],
+            "title": clean_title(a["subject"], a["exch_category"]),
+            "period": fiscal_period(a["subject"]) if category == "results" else None,
             "url": a["attachment_url"],
             "source": a["source"],
             "category": category,

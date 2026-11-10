@@ -1,0 +1,13 @@
+{
+  "name": "FINN",
+  "short_name": "FINN",
+  "description": "The few filings that matter across your portfolio, and why.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0d0e10",
+  "theme_color": "#0d0e10",
+  "icons": [
+    { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" },
+    { "src": "/icon-maskable.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "maskable" }
+  ]
+}
