@@ -120,3 +120,20 @@ def test_no_key_means_unavailable_not_a_crash(monkeypatch):
     assert llm.available("cheap") is False
     with pytest.raises(llm.LLMUnavailable):
         llm.resolve("cheap")
+
+
+def test_strong_tier_outage_falls_back_to_the_cheap_model(conn, fake):
+    calls, replies = fake
+    replies.extend([llm.Transient("HTTP 503")] * llm.MAX_ATTEMPTS + [('{"from": "cheap"}', 30, 5)])
+    result = llm.complete(conn, "qa", "question", sleep=lambda s: None)
+    assert result.data == {"from": "cheap"} and result.model == "small"
+    assert [m for m, _ in calls] == ["large"] * llm.MAX_ATTEMPTS + ["small"]
+    # not cached: the next call should try the strong model again
+    assert conn.execute("SELECT COUNT(*) FROM llm_cache").fetchone()[0] == 0
+
+
+def test_cheap_tier_has_no_fallback(conn, fake):
+    _, replies = fake
+    replies.extend([llm.Transient("HTTP 503")] * llm.MAX_ATTEMPTS)
+    with pytest.raises(llm.LLMError):
+        llm.complete(conn, "classify", "p", sleep=lambda s: None)

@@ -59,3 +59,120 @@ def get_alerts(
         "thresholds": {"volume_multiple": volume_multiple, "price_move_pct": price_move_pct},
         "alerts": alerts.evaluate(rows, volume_multiple, price_move_pct),
     }
+
+
+# --- Research (pull side) -----------------------------------------------------------------
+# A ticker that has been researched is served from its file. A new ticker is built on
+# demand, with progress streamed to the client so the first-time wait is visible.
+
+import queue  # noqa: E402
+import re  # noqa: E402
+import threading  # noqa: E402
+import time  # noqa: E402
+from pathlib import Path  # noqa: E402
+
+from fastapi import HTTPException  # noqa: E402
+from fastapi.responses import StreamingResponse  # noqa: E402
+from pydantic import BaseModel, Field  # noqa: E402
+
+from finn import llm  # noqa: E402
+from finn.research import ask as ask_mod  # noqa: E402
+from finn.research import corpus as corpus_mod  # noqa: E402
+from finn.research import engine  # noqa: E402
+from finn.sources.screener import ScreenerError  # noqa: E402
+
+try:
+    from dotenv import load_dotenv
+    load_dotenv(Path(__file__).resolve().parents[1] / ".env")
+except ImportError:
+    pass
+
+SYMBOL = re.compile(r"[A-Z0-9&\-]{1,20}")
+_build_locks: dict[str, threading.Lock] = {}
+_build_slots = threading.Semaphore(2)          # at most two tickers being built at once
+_recent_asks: list[float] = []
+MAX_ASKS_PER_MINUTE = 20                       # protects the free-tier model quota
+
+
+def _symbol(raw: str) -> str:
+    symbol = raw.upper().strip()
+    if not SYMBOL.fullmatch(symbol):
+        raise HTTPException(status_code=400, detail="Not a valid NSE symbol.")
+    return symbol
+
+
+@app.get("/api/research")
+def research_index() -> dict:
+    return {"available": engine.available(), "model_ready": llm.available("cheap") and llm.available("strong")}
+
+
+@app.get("/api/research/{symbol}")
+def research_get(symbol: str) -> dict:
+    data = engine.load(_symbol(symbol))
+    if data is None:
+        raise HTTPException(status_code=404, detail="Not researched yet.")
+    return data
+
+
+@app.get("/api/research/{symbol}/build")
+def research_build(symbol: str, refresh: bool = False) -> StreamingResponse:
+    """Server-sent events: {"type": "progress", ...} lines, then one "done" or "error"."""
+    symbol = _symbol(symbol)
+    events: queue.Queue = queue.Queue()
+
+    def work() -> None:
+        lock = _build_locks.setdefault(symbol, threading.Lock())
+        with _build_slots, lock:
+            try:
+                existing = None if refresh else engine.load(symbol)
+                if existing is None:
+                    with db.session() as conn:
+                        engine.build(conn, symbol, lambda m, i, n: events.put(
+                            {"type": "progress", "message": m, "step": i, "steps": n}), refresh=refresh)
+                events.put({"type": "done", "symbol": symbol})
+            except ScreenerError as exc:
+                events.put({"type": "error", "message": str(exc)})
+            except Exception as exc:  # noqa: BLE001 - reported to the client, never a silent hang
+                events.put({"type": "error", "message": f"Research failed: {str(exc)[:200]}"})
+
+    threading.Thread(target=work, daemon=True).start()
+
+    def stream():
+        while True:
+            try:
+                event = events.get(timeout=10)
+            except queue.Empty:
+                yield ": keep-alive\n\n"   # stops proxies closing a quiet connection
+                continue
+            yield f"data: {json.dumps(event)}\n\n"
+            if event["type"] in ("done", "error"):
+                return
+
+    return StreamingResponse(stream(), media_type="text/event-stream",
+                             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+
+class Question(BaseModel):
+    symbol: str
+    question: str = Field(min_length=3, max_length=400)
+
+
+@app.post("/api/ask")
+def ask(body: Question) -> dict:
+    symbol = _symbol(body.symbol)
+    corpus = corpus_mod.load(symbol)
+    research = engine.load(symbol)
+    if corpus is None or research is None:
+        raise HTTPException(status_code=404, detail="Research this company first.")
+    if not llm.available("strong"):
+        raise HTTPException(status_code=503, detail="No model key is configured on the server.")
+    now = time.time()
+    _recent_asks[:] = [t for t in _recent_asks if now - t < 60]
+    if len(_recent_asks) >= MAX_ASKS_PER_MINUTE:
+        raise HTTPException(status_code=429, detail="Too many questions right now. Try again in a minute.")
+    _recent_asks.append(now)
+    try:
+        with db.session() as conn:
+            return ask_mod.answer(conn, corpus, research.get("facts", []), body.question)
+    except llm.LLMError as exc:
+        raise HTTPException(status_code=502, detail=f"The model could not answer: {str(exc)[:160]}") from exc

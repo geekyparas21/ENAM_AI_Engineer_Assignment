@@ -38,17 +38,27 @@ TASK_TIER: dict[str, str] = {
     "extract_results": "cheap",    # line items off a P&L page, strict JSON
     "extract_people": "cheap",     # who, role, joining/leaving, profile from the filing
     "extract_guidance": "cheap",   # guidance statements from a transcript
+    "expand_query": "cheap",       # search phrasings for a question (retrieval support)
     "promise_verdict": "strong",   # promised vs delivered
-    "bull_bear": "strong",
+    "bull_bear": "strong",         # business snapshot plus the case each way, every point cited
     "qa": "strong",                # cited answers over retrieved excerpts
 }
 
 # Starting points only: `python -m finn.llm --check` lists what the key can actually use.
 DEFAULT_MODELS: dict[str, dict[str, str]] = {
-    "gemini": {"cheap": "gemini-2.5-flash-lite", "strong": "gemini-2.5-pro"},
+    "gemini": {"cheap": "gemini-3.5-flash-lite", "strong": "gemini-3.5-flash"},
     "groq": {"cheap": "llama-3.1-8b-instant", "strong": "llama-3.3-70b-versatile"},
 }
 KEY_ENV = {"gemini": "GEMINI_API_KEY", "groq": "GROQ_API_KEY"}
+
+# List prices in USD per 1M tokens (input, output), read from ai.google.dev/gemini-api/docs/pricing
+# on 11 Nov 2026. gemini-3.5-flash is inferred from Google's 3.6 release note ("$7.50 versus $9.00 for
+# 3.5 Flash; input remains $1.50"). Both are free of charge on the free tier used here; the list price
+# is what the same work would cost on a paid key. FINN_MODEL_PRICES overrides this table.
+DEFAULT_PRICES: dict[str, tuple[float, float]] = {
+    "gemini-3.5-flash-lite": (0.30, 2.50),
+    "gemini-3.5-flash": (1.50, 9.00),
+}
 
 MAX_ATTEMPTS = 4
 RETRY_STATUS = {408, 429, 500, 502, 503, 504}
@@ -165,13 +175,14 @@ def available(tier: str = "cheap") -> bool:
 
 
 def prices() -> dict[str, tuple[float, float]]:
+    table = dict(DEFAULT_PRICES)
     raw = os.environ.get("FINN_MODEL_PRICES", "").strip()
-    if not raw:
-        return {}
-    try:
-        return {k: (float(v[0]), float(v[1])) for k, v in json.loads(raw).items()}
-    except (ValueError, TypeError, IndexError):
-        return {}
+    if raw:
+        try:
+            table.update({k: (float(v[0]), float(v[1])) for k, v in json.loads(raw).items()})
+        except (ValueError, TypeError, IndexError):
+            pass
+    return table
 
 
 def cost_usd(model: str, prompt_tokens: int, completion_tokens: int) -> float | None:
@@ -237,7 +248,22 @@ def complete(conn: sqlite3.Connection, task: str, prompt: str, *, system: str | 
             if attempt < MAX_ATTEMPTS - 1:
                 sleep(1.0)
     else:
-        raise LLMError(f"{task} failed after {MAX_ATTEMPTS} attempts on {model}: {last}")
+        # The strong model is overloaded or rate-limited: answer with the cheap model rather
+        # than fail the user. The result records which model actually answered, and it is not
+        # cached, so the next call tries the strong model again.
+        fallback = _fallback(tier, provider, model) if isinstance(last, Transient) else None
+        if fallback is None:
+            raise LLMError(f"{task} failed after {MAX_ATTEMPTS} attempts on {model}: {last}")
+        fb_provider, fb_model = fallback
+        try:
+            text, tokens_in, tokens_out = PROVIDERS[fb_provider](fb_model, system, prompt, json_mode, max_tokens)
+            data = parse_json(text) if json_mode else None
+        except (Transient, LLMError) as exc:
+            raise LLMError(f"{task} failed on {model} ({last}) and on fallback {fb_model} ({exc})") from exc
+        result = Result(text, data, task, tier, fb_model, False, tokens_in, tokens_out,
+                        cost_usd(fb_model, tokens_in, tokens_out))
+        _log(conn, result, int((time.time() - started) * 1000))
+        return result
 
     result = Result(text, data, task, tier, model, False, tokens_in, tokens_out,
                     cost_usd(model, tokens_in, tokens_out))
@@ -247,6 +273,17 @@ def complete(conn: sqlite3.Connection, task: str, prompt: str, *, system: str | 
     return result
 
 
+def _fallback(tier: str, provider: str, model: str) -> tuple[str, str] | None:
+    """The cheap tier's model, when a strong-tier call has exhausted its retries."""
+    if tier != "strong":
+        return None
+    try:
+        cheap = resolve("cheap")
+    except LLMUnavailable:
+        return None
+    return None if cheap == (provider, model) else cheap
+
+
 def stats(conn: sqlite3.Connection) -> dict:
     """Totals plus a per-task breakdown, for the Brief footer, /api/stats and the README table."""
     rate = float(os.environ.get("FINN_USD_INR", "0") or 0)
@@ -254,11 +291,18 @@ def stats(conn: sqlite3.Connection) -> dict:
         "SELECT task, tier, model, COUNT(*) calls, SUM(cached) cached, SUM(prompt_tokens) tin, "
         "SUM(completion_tokens) tout, SUM(cost_usd) cost, SUM(cost_usd IS NULL AND cached = 0) unpriced "
         "FROM llm_calls GROUP BY task, tier, model ORDER BY task").fetchall()
-    by_task = [{
-        "task": r["task"], "tier": r["tier"], "model": r["model"], "calls": r["calls"], "cached": r["cached"] or 0,
-        "prompt_tokens": r["tin"] or 0, "completion_tokens": r["tout"] or 0,
-        "cost_usd": r["cost"], "unpriced_calls": r["unpriced"] or 0,
-    } for r in rows]
+    table = prices()
+    by_task = []
+    for r in rows:
+        price = table.get(r["model"])
+        tin, tout = r["tin"] or 0, r["tout"] or 0
+        by_task.append({
+            "task": r["task"], "tier": r["tier"], "model": r["model"], "calls": r["calls"], "cached": r["cached"] or 0,
+            "prompt_tokens": tin, "completion_tokens": tout,
+            # Priced from tokens and the current list-price table; None when the model has no listed price.
+            "cost_usd": round((tin * price[0] + tout * price[1]) / 1_000_000, 6) if price else None,
+            "unpriced_calls": 0 if price or (tin + tout) == 0 else r["calls"],
+        })
     total_cost = sum(t["cost_usd"] or 0.0 for t in by_task)
     priced = all(t["unpriced_calls"] == 0 for t in by_task)
     return {
