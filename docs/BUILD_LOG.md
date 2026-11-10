@@ -116,3 +116,12 @@ broke. Newest session last.
 - Tiny penalties (a ₹2.6 lakh notice to Bharti Airtel) still rank as material. Size
   relative to market cap is not yet part of the score.
 - Model prices are not configured, so the cost line reads "not priced".
+
+**Deployed**
+
+- Frontend is live on Vercel at https://enam-ai-engineer-assignment.vercel.app/, built from
+  `frontend/` and redeployed on every push to `main`. It serves the committed snapshot, so
+  there is no backend to wake up. Checked at 375px on the live URL: all four screens, both
+  themes, no horizontal overflow, no console errors.
+- No backend is deployed yet. It becomes necessary when Research needs live document
+  processing.

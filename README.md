@@ -3,6 +3,8 @@
 A mobile-first investment agent that filters. Across a portfolio of 20 NSE stocks it
 surfaces the few filings that matter, says why in one line, and buries the rest.
 
+**Live demo:** https://enam-ai-engineer-assignment.vercel.app/ (open on a phone; no login)
+
 > Status: work in progress (build challenge, deadline 15 Nov 2026). The Brief, Alerts and
 > Settings screens run on real data. Research (Promise Tracker, cited Q&A) is next. This
 > README will grow into the full write-up; for now it covers how to run what exists.
