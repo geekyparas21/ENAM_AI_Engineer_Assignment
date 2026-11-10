@@ -65,7 +65,7 @@ export function FilingCard({ cluster, now }: { cluster: Cluster; now: Date }) {
       </header>
 
       <h3 className="mt-1.5 line-clamp-3 text-[15px] font-medium leading-[21px]">{a.summary ?? title}</h3>
-      {a.summary && a.summary !== title && (
+      {a.summary && a.summary !== title && a.category !== "results" && (
         <p className="mt-0.5 line-clamp-1 text-[12px] text-faint">{title}</p>
       )}
 

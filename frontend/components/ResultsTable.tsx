@@ -55,8 +55,7 @@ export function ResultsTable({ detail }: { detail: ResultsDetail }) {
         </tbody>
       </table>
       <p className="mt-2 text-[11px] leading-4 text-faint">
-        {detail.ebitda_definition}
-        {detail.page ? ` Figures from p.${detail.page} of the filing.` : ""}
+        {detail.source_note} {detail.ebitda_definition}
       </p>
       {failed.length > 0 && (
         <p className="mt-2 flex gap-1.5 rounded-md bg-sunken px-2 py-1.5 text-[12px] leading-4 text-warn">

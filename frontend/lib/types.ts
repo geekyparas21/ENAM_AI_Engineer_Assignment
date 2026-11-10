@@ -45,6 +45,8 @@ export interface ResultsDetail {
   ebitda_definition: string;
   checks: { name: string; ok: boolean; note: string }[];
   page: number | null;
+  source: "filing" | "screener";
+  source_note: string;
 }
 
 export interface PeopleDetail {

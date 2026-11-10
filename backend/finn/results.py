@@ -6,12 +6,15 @@ EBITDA definition used throughout (operating view):
              - other income
 Banks and other lenders have no meaningful EBITDA (interest is their raw material),
 so when finance costs or depreciation are absent the EBITDA rows are left empty.
+
+Two legs feed a card:
+  1. the results filing itself (PDF page -> line items -> maths here), the primary path;
+  2. screener.in's standardised quarterly table, used to cross-check leg 1 and as a
+     clearly labelled fallback when the filing cannot be read (image scan, broken file).
 """
 from __future__ import annotations
 
 import re
-
-import pymupdf
 
 COLUMNS = ("cur", "prev", "yoy")
 EBITDA_DEFINITION = "EBITDA = PBT before exceptionals + finance costs + D&A − other income."
@@ -44,7 +47,10 @@ def _metric(values: dict[str, float | None]) -> dict:
 
 def _margin(num: dict[str, float | None], den: dict[str, float | None]) -> dict:
     m = {c: (round(100.0 * num[c] / den[c], 1) if num[c] is not None and den[c] else None) for c in COLUMNS}
-    diff = lambda a, b: round(a - b, 1) if a is not None and b is not None else None  # noqa: E731
+
+    def diff(a: float | None, b: float | None) -> float | None:
+        return round(a - b, 1) if a is not None and b is not None else None
+
     # For margins the deltas are percentage points, not percent of a percent.
     return {"cur": m["cur"], "prev": m["prev"], "yoy": m["yoy"],
             "qoq_pct": diff(m["cur"], m["prev"]), "yoy_pct": diff(m["cur"], m["yoy"])}
@@ -108,31 +114,193 @@ def build_card(extracted: dict, period: str | None = None, page: int | None = No
         else "EBITDA is not shown: it is not meaningful for lenders or was not derivable from this filing.",
         "checks": checks,
         "page": page,
+        "source": "filing",
+        "source_note": f"Read from p.{page} of the results filing." if page else "Read from the results filing.",
     }
 
 
-PL_MARKERS = re.compile(r"profit\s*(/\s*\(?loss\)?\s*)?before\s+(exceptional\s+items\s+and\s+)?tax", re.I)
-INCOME_MARKERS = re.compile(r"revenue from operations|total income|interest earned", re.I)
+# --- locating the P&L page ----------------------------------------------------------------
+
+# Scanned filings carry OCR noise ("fmance costs", "exceptionaJ items"), so a page is
+# recognised as a P&L statement by how many of these line items it contains, not by
+# any single exact phrase.
+PL_KEYWORDS = (
+    "revenue from operations", "total income", "other income", "finance cost", "depreciation",
+    "tax expense", "profit before", "earnings per", "total expenses", "interest earned",
+    "employee benefit", "profit for the",
+)
+MIN_KEYWORDS = 5
+QUARTER_MARKERS = ("quarter ended", "three months ended", "quarter and", "3 months ended")
+TITLE = re.compile(r"(consolidated|standalone)", re.I)
 
 
-def find_results_page(pdf_path: str) -> tuple[int, str, str] | None:
+def pl_score(text: str) -> int:
+    low = " ".join(text.lower().split())
+    return sum(1 for k in PL_KEYWORDS if k in low)
+
+
+def page_basis(text: str) -> str | None:
+    """Consolidated or Standalone, from the statement title near the top of the page."""
+    m = TITLE.search(" ".join(text.split())[:1200])
+    return m.group(1).capitalize() if m else None
+
+
+def find_results_page(page_texts: list[str]) -> tuple[int, str, str | None] | None:
     """Locate the quarterly P&L table: (1-based page, page text, basis).
 
-    Prefers the consolidated statement; falls back to standalone. Balance-sheet and
-    cash-flow pages are excluded by requiring both an income line and a PBT line.
+    Consolidated is preferred, then a page whose basis is unclear, then standalone;
+    within a group the earliest page wins (later ones are usually segment notes).
     """
-    best: tuple[int, int, str, str] | None = None
-    with pymupdf.open(pdf_path) as doc:
-        for i, page in enumerate(doc):
-            text = page.get_text()
-            low = text.lower()
-            if not (PL_MARKERS.search(low) and INCOME_MARKERS.search(low)):
-                continue
-            if "quarter ended" not in low and "three months ended" not in low:
-                continue
-            head = low[:1500]
-            consolidated = "consolidated" in head and "standalone financial results" not in head
-            rank = (2 if consolidated else 1) * 1000 - i  # consolidated first, then earliest page
-            if best is None or rank > best[0]:
-                best = (rank, i + 1, text, "Consolidated" if consolidated else "Standalone")
-    return None if best is None else (best[1], best[2], best[3])
+    order = {"Consolidated": 0, None: 1, "Standalone": 2}
+    best: tuple[int, int] | None = None
+    for i, text in enumerate(page_texts):
+        low = " ".join(text.lower().split())
+        if pl_score(text) < MIN_KEYWORDS or not any(q in low for q in QUARTER_MARKERS):
+            continue
+        key = (order[page_basis(text)], i)
+        if best is None or key < best:
+            best = key
+    if best is None:
+        return None
+    text = page_texts[best[1]]
+    return best[1] + 1, text, page_basis(text)
+
+
+# --- periods --------------------------------------------------------------------------------
+
+QUARTER_END = {1: "Jun", 2: "Sep", 3: "Dec", 4: "Mar"}
+MONTH_ORDER = ["Mar", "Jun", "Sep", "Dec"]
+
+
+def period_to_column(period: str | None) -> str | None:
+    """'Q2 FY27' -> 'Sep 2026' (screener labels quarters by their end month)."""
+    m = re.fullmatch(r"Q([1-4]) FY(\d{2})", period or "")
+    if not m:
+        return None
+    quarter, fy = int(m.group(1)), 2000 + int(m.group(2))
+    year = fy if quarter == 4 else fy - 1
+    return f"{QUARTER_END[quarter]} {year}"
+
+
+def infer_period(ts: str) -> str:
+    """Latest completed quarter before a filing date, for subjects that do not name one."""
+    year, month = int(ts[:4]), int(ts[5:7])
+    if month <= 3:
+        return f"Q3 FY{year % 100:02d}"
+    if month <= 6:
+        return f"Q4 FY{year % 100:02d}"
+    if month <= 9:
+        return f"Q1 FY{(year + 1) % 100:02d}"
+    return f"Q2 FY{(year + 1) % 100:02d}"
+
+
+def _shift(column: str, quarters: int) -> str:
+    month, year = column.split()
+    idx = MONTH_ORDER.index(month) + int(year) * 4 + quarters
+    return f"{MONTH_ORDER[idx % 4]} {idx // 4}"
+
+
+# --- screener.in leg: cross-check, and fallback when the filing cannot be read ------------
+
+def _screener_columns(table: dict, period: str | None) -> dict[str, int | None] | None:
+    column = period_to_column(period)
+    if column is None or column not in table["columns"]:
+        return None
+    index = {name: i for i, name in enumerate(table["columns"])}
+    return {"cur": index[column], "prev": index.get(_shift(column, -1)), "yoy": index.get(_shift(column, -4))}
+
+
+def _screener_row(table: dict, names: tuple[str, ...], cols: dict[str, int | None]) -> dict[str, float | None]:
+    row = next((table["rows"][n] for n in names if n in table["rows"]), None)
+    return {c: (row[i] if row is not None and i is not None else None) for c, i in cols.items()}
+
+
+def card_from_screener(company: dict, period: str | None, reason: str) -> dict | None:
+    """Results card from screener.in's standardised quarterly table (already Rs crore).
+
+    Used only when the filing itself was not read; `reason` says why, and the card
+    carries it so the reader knows these figures were not parsed from the PDF.
+    """
+    table = company["quarters"]
+    cols = _screener_columns(table, period)
+    if cols is None:
+        return None
+    revenue = _screener_row(table, ("Sales", "Revenue"), cols)
+    pbt = _screener_row(table, ("Profit before tax",), cols)
+    pat = _screener_row(table, ("Net Profit",), cols)
+    lender = "Financing Profit" in table["rows"]
+    none: dict[str, float | None] = {"cur": None, "prev": None, "yoy": None}
+    ebitda = none if lender else _screener_row(table, ("Operating Profit",), cols)
+    if revenue["cur"] is None or pat["cur"] is None:
+        return None
+    return {
+        "type": "results",
+        "basis": company["basis"],
+        "unit": "₹ cr",
+        "period": period,
+        "metrics": {"revenue": _metric(revenue), "ebitda": _metric(ebitda),
+                    "pbt": _metric(pbt), "pat": _metric(pat)},
+        "margins": {"ebitda": _margin(ebitda, revenue), "pat": _margin(pat, revenue)},
+        "ebitda_definition": "EBITDA is not shown: it is not meaningful for lenders." if lender
+        else "EBITDA = operating profit before other income, depreciation and interest.",
+        "checks": [],
+        "page": None,
+        "source": "screener",
+        "source_note": f"{reason} Figures are from screener.in's standardised quarterly table, "
+                       "rounded to ₹ crore.",
+    }
+
+
+def cross_check(card: dict, company: dict, period: str | None, tolerance_pct: float = 1.5) -> list[dict]:
+    """Compare filing-derived revenue and PAT with screener's table for the same quarter."""
+    cols = _screener_columns(company["quarters"], period)
+    if cols is None:
+        return [{"name": "screener", "ok": True, "note": "Not yet on screener.in; no independent cross-check."}]
+    if card["basis"] != company["basis"]:
+        return [{"name": "screener", "ok": True,
+                 "note": f"Filing figures are {card['basis'].lower()}; screener shows "
+                         f"{company['basis'].lower()}, so not compared."}]
+    checks = []
+    for key, names, label in (("revenue", ("Sales", "Revenue"), "Revenue"), ("pat", ("Net Profit",), "PAT")):
+        ours = card["metrics"][key]["cur"]
+        theirs = _screener_row(company["quarters"], names, cols)["cur"]
+        if ours is None or theirs is None:
+            continue
+        # screener rounds to whole crores, so allow that rounding on small numbers
+        ok = abs(ours - theirs) <= max(abs(theirs) * tolerance_pct / 100.0, 1.0)
+        checks.append({"name": f"screener_{key}", "ok": ok,
+                       "note": f"{label} matches screener.in (₹{theirs:,.0f} cr)." if ok
+                       else f"{label} here is ₹{ours:,.0f} cr but screener.in shows ₹{theirs:,.0f} cr."})
+    return checks
+
+
+def summary_line(card: dict) -> str:
+    """The one-line takeaway on a results card. Composed from the numbers, in code."""
+    rev, pat = card["metrics"]["revenue"]["yoy_pct"], card["metrics"]["pat"]["yoy_pct"]
+    period = card.get("period") or "Quarter"
+
+    def mag(v: float) -> str:
+        return f"{abs(v):.1f}%"
+
+    if rev is None or pat is None:
+        cur = card["metrics"]["pat"]["cur"]
+        if cur is None:
+            return f"{period} results"
+        return f"{period}: PAT ₹{cur:,.0f} cr; no clean year-ago comparison."
+    if rev >= 0 > pat:
+        head = f"Revenue up {mag(rev)} YoY but PAT down {mag(pat)}"
+    elif pat >= 0 > rev:
+        head = f"PAT up {mag(pat)} YoY despite revenue down {mag(rev)}"
+    elif rev < 0 and pat < 0:
+        head = f"Revenue down {mag(rev)} and PAT down {mag(pat)} YoY"
+    elif pat - rev > 5:
+        head = f"PAT up {mag(pat)} YoY, ahead of revenue at +{mag(rev)}"
+    elif rev - pat > 5:
+        head = f"Revenue up {mag(rev)} YoY, PAT lagging at +{mag(pat)}"
+    else:
+        head = f"Revenue up {mag(rev)} and PAT up {mag(pat)} YoY"
+    margin = card["margins"]["ebitda"]
+    if margin["cur"] is not None and margin["yoy_pct"] is not None and abs(margin["yoy_pct"]) >= 0.5:
+        verb = "expanded" if margin["yoy_pct"] > 0 else "compressed"
+        head += f"; EBITDA margin {verb} {abs(margin['yoy_pct']):.1f}pp to {margin['cur']:.1f}%"
+    return f"{period}: {head}."

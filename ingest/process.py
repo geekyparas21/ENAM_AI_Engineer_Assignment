@@ -10,13 +10,15 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "backend"))
 
-from finn import db, snapshot  # noqa: E402
+from finn import db, enrich, snapshot  # noqa: E402
 
 
 def main() -> int:
     with db.session() as conn:
         counts = snapshot.classify_pending(conn)
         conn.commit()
+        cards = enrich.enrich_results(conn)
+        print(f"results cards: {cards}")
         snap = snapshot.build(conn)
     snapshot.write(snap)
 
