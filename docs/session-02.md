@@ -1807,13 +1807,13 @@ failed with exit code 127
 
 ● User answered Claude's questions:
   ⎿  · This repo's 4 commits, and this machine's git default, use the identity
-     "paraskansal-beep <paras.kansal@fnmathlogic.com>". To switch the FINN repo
+     "[old work account] <[old work email]>". To switch the FINN repo
      to your geekyparas21 account, which email should its commits carry? →
      previously that paraskansalbeep was my some company id that is not in use
      now i will be using this geekyparas21 account with my personal mail
      paraskansal21@gmail.com
-     · The 4 commits already in the FINN repo are authored as "paraskansal-beep
-     <paras.kansal@fnmathlogic.com>". Nothing has been pushed anywhere yet.
+     · The 4 commits already in the FINN repo are authored as "[old work account]
+     <[old work email]>". Nothing has been pushed anywhere yet.
      Should I rewrite those 4 local commits so they show the new geekyparas21
      identity? → Other
 
@@ -1855,13 +1855,13 @@ failed with exit code 127
     untested until there is a GitHub repo to push to.
 
   Still on the old company identity:
-  - The 4 existing commits are authored as paraskansal-beep
-    <paras.kansal@fnmathlogic.com>.
+  - The 4 existing commits are authored as [old work account]
+    <[old work email]>.
   - The machine-wide git default is still that identity, so any other repo on
     this laptop will keep using it. I left it alone because it is outside this
     project.
   - The saved GitHub login in Windows Credential Manager is still
-    paraskansal-beep. I left that too.
+    [old work account]. I left that too.
   - VS Code's own GitHub sign-in (the Accounts icon, bottom-left) may also be
     the old account. That matters only if you publish from VS Code's button.
 
@@ -1939,7 +1939,7 @@ failed with exit code 4
     name to add it.
   - Model key: there is no .env file at the repo root yet.
   - Laptop-wide identity: the machine default and the saved GitHub login are
-    still paraskansal-beep. VS Code's own GitHub sign-in is not visible to me.
+    still [old work account]. VS Code's own GitHub sign-in is not visible to me.
   - Preview: http://localhost:3210 is still up and answering; the stop notice I
     started investigating was a false alarm.
 
