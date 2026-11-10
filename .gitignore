@@ -1,0 +1,11 @@
+.venv/
+__pycache__/
+*.pyc
+.env
+.env.local
+data/finn.db
+data/cache/
+node_modules/
+.next/
+.vercel/
+.pytest_cache/
