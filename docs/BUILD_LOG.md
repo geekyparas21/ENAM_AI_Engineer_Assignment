@@ -76,3 +76,43 @@ broke. Newest session last.
   results cards, one-line summaries and management-change cards are written and tested
   against a fake provider but have not run against a real model.
 - Not deployed. Hand-labelled classifier eval set not started.
+
+## Session 1, continued — 11 Nov 2026 — first run against a real model
+
+**Built**
+
+- Ran the model steps on the real filings with a Gemini free-tier key
+  (`gemini-3.5-flash-lite` for every cheap-tier task): 35 ambiguous filings classified,
+  results line items read from the filing PDFs, people cards for 17 of 18 management
+  changes, and 71 one-line summaries. About 190k input tokens in total.
+
+**Decisions**
+
+- **A results card must reconcile with screener.in in all three quarters.** Comparing
+  filing-parsed cards with screener showed revenue, PBT and PAT matching exactly for 11
+  of 15 companies, but the model had read the wrong revenue line for ITC and Infosys and
+  wrong prior-period figures for CDSL. If revenue, PBT or PAT disagree in any of the
+  three quarters, the card now falls back to screener's table and says why. A confident
+  wrong headline is worse than a labelled fallback. EBITDA differences only raise a
+  warning, because the two sources can treat other income differently.
+- **One failed filing no longer stops the run.** A model error on a single filing is
+  counted and skipped; it is retried on the next run.
+
+**What broke, and the fix**
+
+- *Empty `FINN_DATA_DIR=` in a freshly copied `.env` pointed the pipeline at the current
+  folder*, which created an empty database and wrote an empty snapshot over the
+  frontend's copy. The real database was untouched. An empty value now means "use the
+  default".
+- *The default model id was retired.* `gemini-2.5-flash-lite` is closed to new keys; the
+  cheap tier is now set in `.env`. Model ids are configuration for exactly this reason.
+- *A temporary "high demand" error from the provider aborted every later step.* Fixed as
+  above.
+
+**Known gaps from this run**
+
+- The model labelled one Reliance filing about Jio Platforms' listing as `results`; it
+  should be `M&A`. The hand-labelled eval set will measure how often this happens.
+- Tiny penalties (a ₹2.6 lakh notice to Bharti Airtel) still rank as material. Size
+  relative to market cap is not yet part of the score.
+- Model prices are not configured, so the cost line reads "not priced".

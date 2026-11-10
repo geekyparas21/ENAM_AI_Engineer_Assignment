@@ -261,17 +261,48 @@ def cross_check(card: dict, company: dict, period: str | None, tolerance_pct: fl
                  "note": f"Filing figures are {card['basis'].lower()}; screener shows "
                          f"{company['basis'].lower()}, so not compared."}]
     checks = []
-    for key, names, label in (("revenue", ("Sales", "Revenue"), "Revenue"), ("pat", ("Net Profit",), "PAT")):
-        ours = card["metrics"][key]["cur"]
-        theirs = _screener_row(company["quarters"], names, cols)["cur"]
-        if ours is None or theirs is None:
+    quarter_label = {"cur": "this quarter", "prev": "the previous quarter", "yoy": "the year-ago quarter"}
+    lender = "Financing Profit" in company["quarters"]["rows"]
+    # Revenue, PBT and PAT are reported the same way everywhere, so they must reconcile.
+    # EBITDA depends on what counts as other income, so it gets a wider band and only a warning.
+    specs = [("revenue", ("Sales", "Revenue"), "Revenue", tolerance_pct),
+             ("pbt", ("Profit before tax",), "PBT", tolerance_pct),
+             ("pat", ("Net Profit",), "PAT", tolerance_pct)]
+    if not lender:
+        specs.append(("ebitda", ("Operating Profit",), "EBITDA", 5.0))
+    for key, names, label, tol in specs:
+        theirs_row = _screener_row(company["quarters"], names, cols)
+        ours_row = card["metrics"].get(key) or {}
+        worst: tuple[str, float, float] | None = None
+        compared = 0
+        for col in COLUMNS:
+            ours, theirs = ours_row.get(col), theirs_row[col]
+            if ours is None or theirs is None:
+                continue
+            compared += 1
+            # screener rounds to whole crores, so allow that rounding on small numbers
+            if abs(ours - theirs) > max(abs(theirs) * tol / 100.0, 1.0) and worst is None:
+                worst = (col, ours, theirs)
+        if compared == 0:
             continue
-        # screener rounds to whole crores, so allow that rounding on small numbers
-        ok = abs(ours - theirs) <= max(abs(theirs) * tolerance_pct / 100.0, 1.0)
-        checks.append({"name": f"screener_{key}", "ok": ok,
-                       "note": f"{label} matches screener.in (₹{theirs:,.0f} cr)." if ok
-                       else f"{label} here is ₹{ours:,.0f} cr but screener.in shows ₹{theirs:,.0f} cr."})
+        if worst is None:
+            note = f"{label} matches screener.in in {compared} of {compared} quarters compared."
+        else:
+            col, ours, theirs = worst
+            note = (f"{label} for {quarter_label[col]} reads ₹{ours:,.0f} cr in the filing but "
+                    f"screener.in shows ₹{theirs:,.0f} cr.")
+            if key == "ebitda":
+                note += " The two may treat other income differently."
+        checks.append({"name": f"screener_{key}", "ok": worst is None, "note": note})
     return checks
+
+
+CORE_CHECKS = ("screener_revenue", "screener_pbt", "screener_pat")
+
+
+def reconciles(checks: list[dict]) -> bool:
+    """True unless a core figure (revenue, PBT, PAT) disagrees with screener.in."""
+    return all(c["ok"] for c in checks if c["name"] in CORE_CHECKS)
 
 
 def summary_line(card: dict) -> str:

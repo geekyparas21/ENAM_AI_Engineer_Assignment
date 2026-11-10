@@ -5,7 +5,8 @@ import os
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-DATA_DIR = Path(os.environ.get("FINN_DATA_DIR", ROOT / "data"))
+# An empty FINN_DATA_DIR (as in a freshly copied .env) means "use the default", not "use cwd".
+DATA_DIR = Path(os.environ.get("FINN_DATA_DIR", "").strip() or ROOT / "data")
 CACHE_DIR = DATA_DIR / "cache"
 DB_PATH = DATA_DIR / "finn.db"
 SNAPSHOT_PATH = DATA_DIR / "snapshot.json"

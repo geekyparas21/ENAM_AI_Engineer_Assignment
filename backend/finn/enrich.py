@@ -11,9 +11,9 @@ import json
 import sqlite3
 from typing import Callable
 
-from . import documents
-from .results import (build_card, card_from_screener, cross_check, find_results_page, infer_period,
-                      summary_line)
+from . import documents, llm
+from .results import (CORE_CHECKS, build_card, card_from_screener, cross_check, find_results_page,
+                      infer_period, reconciles, summary_line)
 from .sources import screener
 from .titles import fiscal_period
 
@@ -53,9 +53,16 @@ def results_card(symbol: str, subject: str, ts: str, url: str | None,
         company = None
 
     if card is not None:
-        if company is not None:
-            card["checks"].extend(cross_check(card, company, period))
-        return card, "filing"
+        if company is None:
+            return card, "filing"
+        checks = cross_check(card, company, period)
+        if reconciles(checks):
+            card["checks"].extend(checks)
+            return card, "filing"
+        # The model misread a line (or the company reports revenue on a different basis).
+        # A confident wrong headline is worse than a labelled fallback, so use screener's table.
+        failed = next(c["note"] for c in checks if not c["ok"] and c["name"] in CORE_CHECKS)
+        reason = f"The figures read from the filing did not reconcile: {failed}"
     if company is not None:
         fallback = card_from_screener(company, period, reason)
         if fallback is not None:
@@ -132,13 +139,17 @@ def enrich_summaries(conn: sqlite3.Connection) -> dict[str, int]:
         f"SELECT id, category, subject, exch_category, attachment_url FROM announcements "
         f"WHERE category IN ({marks}) AND summary IS NULL AND COALESCE(kind, '') != 'repayment'",
         SUMMARISED).fetchall()
-    counts = {"summarised": 0, "no_text": 0, "nothing_to_say": 0}
+    counts = {"summarised": 0, "no_text": 0, "nothing_to_say": 0, "failed": 0}
     for r in rows:
         text = _filing_text(r["attachment_url"])
         if text is None:
             counts["no_text"] += 1
             continue
-        result = llm_tasks.summarise(conn, r["category"], clean_title(r["subject"], r["exch_category"]), text)
+        try:
+            result = llm_tasks.summarise(conn, r["category"], clean_title(r["subject"], r["exch_category"]), text)
+        except llm.LLMError:
+            counts["failed"] += 1  # provider trouble on this one filing: retried on the next run
+            continue
         if result is None:
             counts["nothing_to_say"] += 1
             continue
@@ -162,13 +173,17 @@ def enrich_people(conn: sqlite3.Connection) -> dict[str, int]:
     rows = conn.execute(
         "SELECT id, subject, exch_category, attachment_url FROM announcements "
         "WHERE category = 'management_change' AND detail IS NULL").fetchall()
-    counts = {"cards": 0, "no_text": 0, "nobody_named": 0}
+    counts = {"cards": 0, "no_text": 0, "nobody_named": 0, "failed": 0}
     for r in rows:
         text = _filing_text(r["attachment_url"])
         if text is None:
             counts["no_text"] += 1
             continue
-        people = llm_tasks.extract_people(conn, clean_title(r["subject"], r["exch_category"]), text)
+        try:
+            people = llm_tasks.extract_people(conn, clean_title(r["subject"], r["exch_category"]), text)
+        except llm.LLMError:
+            counts["failed"] += 1
+            continue
         if not people:
             counts["nobody_named"] += 1
             continue
