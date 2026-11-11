@@ -29,6 +29,11 @@ from finn import db, enrich, llm, llm_tasks, snapshot  # noqa: E402
 
 def main() -> int:
     with db.session() as conn:
+        if conn.execute("SELECT COUNT(*) c FROM announcements").fetchone()["c"] == 0:
+            # Sources were unreachable on a fresh database: keep the snapshot we have
+            # rather than publish an empty one.
+            print("no filings in the database; leaving the existing snapshot untouched")
+            return 0
         counts = snapshot.classify_pending(conn)
         conn.commit()
         print(f"rules: {counts}")

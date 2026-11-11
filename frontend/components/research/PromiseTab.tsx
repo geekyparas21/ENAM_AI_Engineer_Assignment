@@ -13,7 +13,7 @@ export const VERDICT: Record<Verdict, { label: string; text: string; fill: strin
   moved_goalposts: { label: "Moved the goalposts", text: "text-warn", fill: "var(--warn)", Icon: ShiftIcon },
   quietly_dropped: { label: "Quietly dropped", text: "text-warn", fill: "var(--muted)", Icon: FadeIcon },
   in_progress: { label: "In progress", text: "text-accent", fill: "var(--chart)", Icon: ClockIcon },
-  unverifiable: { label: "Can't verify from filings", text: "text-muted", fill: "var(--line)", Icon: HelpIcon },
+  unverifiable: { label: "Not verifiable", text: "text-muted", fill: "var(--line)", Icon: HelpIcon },
 };
 const ORDER: Verdict[] = ["delivered", "missed", "moved_goalposts", "quietly_dropped", "in_progress", "unverifiable"];
 const PROGRESS = { ahead: "ahead of target", on_track: "on track", behind: "behind target" } as const;
@@ -62,7 +62,10 @@ function Thread({ t }: { t: PromiseThread }) {
   const [open, setOpen] = useState(false);
   const meta = VERDICT[t.verdict];
   const first = t.delivered[0];
-  const numeric = first && first.on_period && first.unit === "%" && t.basis === "reported" &&
+  // The target-versus-delivered bar is drawn only when the two are genuinely comparable:
+  // a settled or in-progress verdict, same period, same basis, both in percent.
+  const scored = t.verdict === "delivered" || t.verdict === "missed" || t.verdict === "in_progress";
+  const numeric = scored && first && first.on_period && first.unit === "%" && t.basis === "reported" &&
     (t.target.low !== null || t.target.high !== null) && (t.target.unit === "%" || t.target.unit === null);
   const changed = t.initial_target && t.target.text && t.initial_target !== t.target.text;
 

@@ -125,3 +125,63 @@ broke. Newest session last.
   themes, no horizontal overflow, no console errors.
 - No backend is deployed yet. It becomes necessary when Research needs live document
   processing.
+
+## Session 2 — 11 Nov 2026 — Research engine, evaluation, deployment plumbing
+
+**Built**
+
+- Research for any NSE ticker: the last five concall transcripts and the latest annual
+  report are read once and cached per page; six companies are built and shipped with the
+  app (KPITTECH, DIXON, PERSISTENT, ASTRAL, TITAN, and KAYNES from outside the portfolio).
+- Promise Tracker: a cheap model lists guidance with a verbatim quote and page; code checks
+  the quote is really on that page; a stronger model groups statements into threads and
+  gives a verdict, referring to delivered figures only by key; code fills in the numbers
+  and re-checks every verdict it can compute.
+- Financial tabs (snapshot, trajectory, cash quality, balance sheet) computed entirely in
+  code from screener.in's standardised tables. Business snapshot, bull and bear, and Ask
+  FINN are written only from retrieved pages and computed figures; anything uncited is
+  removed before it is shown.
+- Research screen with live progress for a first-time ticker (Titan built in 52 seconds
+  through the UI), a hand-labelled classifier eval (81.4% for rules + model), a Render
+  blueprint, a GitHub Actions ingestion workflow, and a service worker for offline use.
+
+**Decisions**
+
+- **BM25, not embeddings.** The prompt suggested embeddings. Questions about filings are
+  keyword-heavy and a page is the unit of citation, so lexical retrieval over pages fits,
+  and it needs no model download (too heavy for a free-tier instance) and no API quota.
+  Its weakness is synonyms: "customer concentration" missed a page about "top two
+  accounts". A cheap query-expansion call plus rank fusion fixed that case.
+- **The model points at numbers; it never writes them.** In verdict evidence the model
+  writes `{FY26.ebitda_margin}` and code substitutes 18.9%. An unknown key is never shown
+  as a number.
+- **"Ahead" or "behind" needs a reported figure for the target's own period.** The model
+  called targets "on track" because management repeated them. That label is now removed
+  unless a figure for that period supports it, and a FY29 target is no longer compared
+  with FY27 numbers.
+- **The strong tier falls back to the cheap model.** Gemini's free tier allows 20 requests
+  a day on the stronger model. An exhausted daily quota now skips retries and falls back
+  immediately; the result records which model answered and is not cached.
+- **Tiny penalties are routine.** A legal filing whose stated amount is under ₹1 crore is
+  demoted, so a ₹2.6 lakh notice to Bharti Airtel no longer sits beside an insolvency order.
+- **The classifier was not tuned on its eval set.** Two rule fixes are obvious from the
+  misses; they are listed in the README instead of applied, so the reported number is honest.
+
+**What broke, and the fix**
+
+- *Analysts quoted as management.* "You had said Q2 would be flattish" was extracted as
+  guidance. Second-person address and questions are now rejected in code.
+- *Citations one page off.* Quotes were matched against a page plus the next one, so a
+  quote on page 5 could be cited as page 4. A test caught it; a single-page match now
+  wins, and re-verifying the built research corrected 11 of 65 page numbers.
+- *Regex word boundaries written as backspace characters* by a shell heredoc, silently
+  disabling a filter. Found by a failing assertion; source edits now avoid that path.
+- *Stale stylesheet in the Next.js build cache* left chart marks black. Fixed by a clean
+  build; chart colours were validated for both themes with a palette checker.
+- *Quota exhaustion left research half-built.* Three of four companies were missing a
+  section. Fixed by the fallback above and a rebuild.
+
+**Checked**
+
+- 77 unit tests, all offline. Research tabs, Ask FINN and a first-time build were driven
+  through the real UI at 375px in both themes with no layout overflow.

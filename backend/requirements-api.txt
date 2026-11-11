@@ -1,0 +1,10 @@
+# Runtime dependencies of the API only (what the hosted backend installs).
+# Ingestion needs more (yfinance, pandas): see requirements.txt.
+fastapi
+uvicorn[standard]
+pydantic
+requests
+pymupdf
+beautifulsoup4
+lxml
+python-dotenv

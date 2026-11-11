@@ -1,0 +1,21 @@
+# Render blueprint for the FINN API (free tier). Create it from the Render dashboard with
+# "New > Blueprint" and this repository; set GEMINI_API_KEY when prompted.
+services:
+  - type: web
+    name: finn-api
+    runtime: python
+    plan: free
+    buildCommand: pip install -r backend/requirements-api.txt
+    startCommand: cd backend && uvicorn app:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /api/health
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.9
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: FINN_CHEAP_MODEL
+        value: gemini:gemini-3.5-flash-lite
+      - key: FINN_STRONG_MODEL
+        value: gemini:gemini-3.5-flash
+      - key: FINN_CORS_ORIGINS
+        value: https://enam-ai-engineer-assignment.vercel.app,http://localhost:3000,http://localhost:3210

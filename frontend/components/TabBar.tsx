@@ -17,6 +17,12 @@ export function TabBar() {
   const path = usePathname();
   const { theme } = usePrefs();
   useEffect(() => applyTheme(theme), [theme]);
+  // Offline support: the service worker keeps the last Brief and research files available.
+  useEffect(() => {
+    if (process.env.NODE_ENV === "production" && "serviceWorker" in navigator) {
+      void navigator.serviceWorker.register("/sw.js").catch(() => undefined);
+    }
+  }, []);
 
   return (
     <nav aria-label="Primary"

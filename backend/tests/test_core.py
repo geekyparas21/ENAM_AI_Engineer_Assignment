@@ -136,3 +136,20 @@ class TestRanking:
     def test_newspaper_ad_is_routine_even_inside_results(self):
         s, _, _ = score("results", "newspaper_ad", "", "2026-11-05T18:10:00+05:30", self.days)
         assert s < 35
+
+
+class TestSizeAwareRanking:
+    def test_amounts_are_read_in_any_indian_unit(self):
+        from finn.prioritise import largest_amount_crore
+        assert largest_amount_crore("penalty notices totaling Rs. 2,62,000 from the DoT") == 0.0262
+        assert largest_amount_crore("commercial paper worth Rs. 200 crores") == 200.0
+        assert largest_amount_crore("tax of Rs. 1,91,873 and penalty of Rs. 82,00,747") == 0.8200747
+        assert largest_amount_crore("aggregating to INR 70 billion") == 7000.0
+        assert largest_amount_crore("NCLAT set aside the order") is None
+
+    def test_trivial_penalty_is_demoted_to_routine_but_a_large_one_is_not(self):
+        small, reasons, _ = score("litigation", None, "", "2026-11-05T11:00:00+05:30", {}, "Received a penalty notice of Rs. 1,07,000.")
+        large, _, _ = score("litigation", None, "", "2026-11-05T11:00:00+05:30", {}, "GST demand of Rs. 240 crore.")
+        unknown, _, _ = score("litigation", None, "", "2026-11-05T11:00:00+05:30", {}, "NCLAT set aside the order.")
+        assert small == 30.0 and "under ₹1 crore" in reasons[-1]
+        assert large == 75.0 and unknown == 75.0

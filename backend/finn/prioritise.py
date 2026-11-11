@@ -36,6 +36,25 @@ MOVE_PCT = 3.0
 MOVE_VOL_MULTIPLE = 2.0
 
 
+# Rupee amounts as they appear in filing summaries: "Rs. 2,62,000", "Rs 200 crores", "INR 70 billion".
+AMOUNT = re.compile(r"(?:Rs\.?|INR|₹)\s*([\d,]+(?:\.\d+)?)\s*(crores?|cr|lakhs?|lacs?|million|billion)?", re.I)
+TO_CRORE = {"crore": 1.0, "crores": 1.0, "cr": 1.0, "lakh": 0.01, "lakhs": 0.01, "lac": 0.01, "lacs": 0.01,
+            "million": 0.1, "billion": 100.0}
+SMALL_AMOUNT_CRORE = 1.0
+
+
+def largest_amount_crore(text: str | None) -> float | None:
+    """The largest rupee amount mentioned, in crore. None when no amount is stated."""
+    found = []
+    for number, unit in AMOUNT.findall(text or ""):
+        try:
+            value = float(number.replace(",", ""))
+        except ValueError:
+            continue
+        found.append(value * TO_CRORE[unit.lower()] if unit else value / 1e7)
+    return max(found) if found else None
+
+
 def reaction_day(ts: str, trading_days: list[str]) -> str | None:
     """The session on which the market could first react to a filing.
 
@@ -52,7 +71,7 @@ def reaction_day(ts: str, trading_days: list[str]) -> str | None:
 
 
 def score(category: str, kind: str | None, subject: str, ts: str,
-          days: dict[str, dict]) -> tuple[float, list[str], dict | None]:
+          days: dict[str, dict], summary: str | None = None) -> tuple[float, list[str], dict | None]:
     """Return (score, reasons, market_move). `days` maps date -> price row for the symbol."""
     base = BASE_WEIGHT.get(category, 5)
     value = float(base)
@@ -71,6 +90,13 @@ def score(category: str, kind: str | None, subject: str, ts: str,
         elif JUNIOR_ROLES.search(subject):
             value *= 0.7
             reasons.append("Below board/KMP level (x0.7)")
+
+    # A penalty or demand that is trivially small for a listed company is paperwork, not news.
+    if category == "litigation":
+        amount = largest_amount_crore(summary)
+        if amount is not None and amount < SMALL_AMOUNT_CRORE:
+            value *= 0.4
+            reasons.append("Amount involved is under ₹1 crore (x0.4)")
 
     move = None
     rday = reaction_day(ts, sorted(days))

@@ -61,7 +61,7 @@ def build(conn: sqlite3.Connection) -> dict:
         # Rows still waiting for the LLM are shown as unclassified, never guessed.
         category = a["category"] if a["category"] in BASE_WEIGHT else "unclassified"
         days = {d["date"]: d for d in market.get(a["symbol"], [])}
-        s, reasons, move = score(category, a["kind"], a["subject"] or "", a["ts"], days)
+        s, reasons, move = score(category, a["kind"], a["subject"] or "", a["ts"], days, a["summary"])
         anns.append({
             "id": a["id"],
             "symbol": a["symbol"],
