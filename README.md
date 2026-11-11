@@ -167,7 +167,8 @@ research files. For Ask FINN and first-time research, start the backend and put
   and `NEXT_PUBLIC_API_URL` on Vercel.
 - **Scheduled ingestion:** `.github/workflows/ingest.yml` refreshes the snapshot after the
   close and three more times a day, and commits it; the database and document cache persist
-  between runs so nothing is processed twice. It needs a `GEMINI_API_KEY` repository secret.
+  between runs so nothing is processed twice. It is opt-in: add a `GEMINI_API_KEY` repository
+  secret, then set the repository variable `FINN_INGEST_ENABLED` to `true`.
 
 ## Known limitations
 

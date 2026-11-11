@@ -18,6 +18,9 @@ concurrency:
 
 jobs:
   ingest:
+    # Opt-in: runs only once the repository variable FINN_INGEST_ENABLED is 'true' and the
+    # GEMINI_API_KEY secret is set. Without the key the model-written cards would be lost.
+    if: ${{ vars.FINN_INGEST_ENABLED == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
