@@ -8,8 +8,8 @@ import type { Snapshot } from "@/lib/types";
 export function PageTitle({ title, sub }: { title: string; sub?: ReactNode }) {
   return (
     <header className="pb-3 pt-2">
-      <h1 className="text-[22px] font-semibold tracking-tight">{title}</h1>
-      {sub && <p className="mt-0.5 text-[13px] text-muted">{sub}</p>}
+      <h1 className="display text-[30px] leading-9">{title}</h1>
+      {sub && <p className="mt-1 text-[14px] leading-5 text-muted">{sub}</p>}
     </header>
   );
 }
@@ -18,7 +18,7 @@ export function Skeletons({ count = 3 }: { count?: number }) {
   return (
     <div aria-busy="true" aria-label="Loading" className="space-y-3">
       {Array.from({ length: count }, (_, i) => (
-        <div key={i} className="rounded-xl border border-line bg-surface p-3.5">
+        <div key={i} className="card p-3.5">
           <div className="skeleton h-4 w-28" />
           <div className="skeleton mt-3 h-4 w-full" />
           <div className="skeleton mt-2 h-4 w-2/3" />
@@ -47,7 +47,7 @@ export function WithSnapshot({ children }: {
   if (data) return <>{children(data, { source, refreshing })}</>;
   if (error) {
     return (
-      <div className="rounded-xl border border-line bg-surface p-4 text-[14px]">
+      <div className="card p-4 text-[14px]">
         <p className="font-medium">FINN could not load its data.</p>
         <p className="mt-1 text-muted">{error} Check your connection and reload.</p>
         <button type="button" onClick={() => window.location.reload()}

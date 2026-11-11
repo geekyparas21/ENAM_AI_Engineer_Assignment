@@ -33,9 +33,11 @@ export function TabBar() {
           return (
             <li key={href} className="flex-1">
               <Link href={href} aria-current={active ? "page" : undefined}
-                className={`flex h-14 flex-col items-center justify-center gap-0.5 text-[11px] font-medium ${
+                className={`flex h-[60px] flex-col items-center justify-center gap-1 text-[11px] font-medium ${
                   active ? "text-accent" : "text-muted"}`}>
-                <Icon />
+                <span className={`flex h-7 w-14 items-center justify-center rounded-full ${active ? "bg-accent-soft" : ""}`}>
+                  <Icon />
+                </span>
                 {label}
               </Link>
             </li>

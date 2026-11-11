@@ -18,7 +18,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   return (
     <section className="mt-5">
       <h2 className="label">{title}</h2>
-      <div className="mt-1.5 rounded-xl border border-line bg-surface p-3.5">{children}</div>
+      <div className="mt-1.5 card p-3.5">{children}</div>
     </section>
   );
 }

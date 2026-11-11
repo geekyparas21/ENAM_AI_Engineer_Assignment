@@ -16,7 +16,7 @@ function MarketAlert({ a }: { a: FiredAlert }) {
   const d = a.day;
   if (a.type === "price") {
     return (
-      <li className="rounded-xl border border-line bg-surface p-3.5">
+      <li className="card p-3.5">
         <div className="flex items-baseline gap-2">
           <span className="tick text-[15px] font-semibold">{a.symbol}</span>
           <span className="label">Price move</span>
@@ -32,7 +32,7 @@ function MarketAlert({ a }: { a: FiredAlert }) {
   }
   const fill = Math.min(100, (100 * (d.avg_vol_20 ?? 0)) / d.volume);
   return (
-    <li className="rounded-xl border border-line bg-surface p-3.5">
+    <li className="card p-3.5">
       <div className="flex items-baseline gap-2">
         <span className="tick text-[15px] font-semibold">{a.symbol}</span>
         <span className="label">Volume</span>
@@ -90,7 +90,7 @@ function Ready({ snap, source, refreshing }: { snap: Snapshot; source: string; r
   return (
     <>
       <PageTitle title="Alerts" sub={`Last ${LOOKBACK_DAYS} days. You decide what unusual means.`} />
-      <section className="rounded-xl border border-line bg-surface p-3.5">
+      <section className="card p-3.5">
         <Thresholds />
       </section>
 
@@ -98,7 +98,7 @@ function Ready({ snap, source, refreshing }: { snap: Snapshot; source: string; r
       {market.length > 0 ? (
         <ul className="mt-1.5 space-y-3">{market.map((a) => <MarketAlert key={a.id} a={a} />)}</ul>
       ) : (
-        <p className="mt-1.5 rounded-xl border border-dashed border-line px-4 py-6 text-center text-[13px] text-muted">
+        <p className="mt-1.5 rounded-[18px] border border-dashed border-line px-4 py-6 text-center text-[13px] text-muted">
           Nothing crossed {settings.volume_multiple.toFixed(1)}x volume or ±{settings.price_move_pct.toFixed(1)}% in the last {LOOKBACK_DAYS} days.
           Lower a threshold to see more.
         </p>
@@ -106,9 +106,9 @@ function Ready({ snap, source, refreshing }: { snap: Snapshot; source: string; r
 
       <h2 className="label mt-5">Filings in types you follow · {filings.length}</h2>
       {filings.length > 0 ? (
-        <ul className="mt-1.5 rounded-xl border border-line bg-surface px-3.5">{filings.map((a) => <FilingAlert key={a.id} a={a} />)}</ul>
+        <ul className="mt-1.5 card px-3.5">{filings.map((a) => <FilingAlert key={a.id} a={a} />)}</ul>
       ) : (
-        <p className="mt-1.5 rounded-xl border border-dashed border-line px-4 py-6 text-center text-[13px] text-muted">
+        <p className="mt-1.5 rounded-[18px] border border-dashed border-line px-4 py-6 text-center text-[13px] text-muted">
           No filings in your followed types this week. Choose types in Settings.
         </p>
       )}

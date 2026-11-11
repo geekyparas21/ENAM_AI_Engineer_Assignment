@@ -1,4 +1,4 @@
-import { CATEGORY_LABEL, istDay, pct } from "./format";
+import { CATEGORY_LABEL, istDay, shortName } from "./format";
 import { muteKey, type Prefs, type WindowKey } from "./store";
 import type { Announcement, Category, MarketDay, Settings, Snapshot } from "./types";
 
@@ -148,6 +148,27 @@ export function firedAlerts(snap: Snapshot, settings: Settings, fromDay: string,
 }
 
 /** The 2-3 line top summary. Composed from facts in code: no model call, nothing to hallucinate. */
+/** "A", "A and B", "A, B and C", "A, B, C and 2 others". */
+function listNames(names: string[]): string {
+  if (names.length <= 1) return names[0] ?? "";
+  if (names.length <= 3) return `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
+  const rest = names.length - 3;
+  return `${names.slice(0, 3).join(", ")} and ${rest} ${rest === 1 ? "other" : "others"}`;
+}
+
+/** How each kind of event is said in a sentence. */
+const PHRASE: Partial<Record<Category, (who: string, many: boolean) => string>> = {
+  results: (who) => `${who} reported results`,
+  management_change: (who) => `Leadership changed at ${who}`,
+  "M&A": (who) => `${who} announced a deal or restructuring`,
+  fund_raise: (who, many) => `${who} ${many ? "are" : "is"} raising money`,
+  litigation: (who) => `${who} received a legal or regulatory order`,
+  credit_rating: (who) => `${who} had a credit rating action`,
+  dividend: (who) => `${who} declared a dividend`,
+  pledging: (who) => `Promoter pledging changed at ${who}`,
+};
+
+/** The 2-3 line top summary. Composed from facts in code: no model call, nothing to hallucinate. */
 export function headline(brief: Brief, snap: Snapshot): string[] {
   const lines: string[] = [];
   const heads = brief.material.map((c) => c.head);
@@ -156,20 +177,26 @@ export function headline(brief: Brief, snap: Snapshot): string[] {
   const byCat = new Map<Category, string[]>();
   for (const h of heads) {
     const list = byCat.get(h.category) ?? [];
-    if (!list.includes(h.symbol)) list.push(h.symbol);
+    const name = shortName(h.company, h.symbol);
+    if (!list.includes(name)) list.push(name);
     byCat.set(h.category, list);
   }
-  const names = (list: string[]) => (list.length <= 3 ? list.join(", ") : `${list.slice(0, 3).join(", ")} +${list.length - 3}`);
-  const parts = [...byCat.entries()].slice(0, 3)
-    .map(([cat, list]) => `${CATEGORY_LABEL[cat]}: ${names(list)}`);
-  lines.push(`${parts.join(". ")}.`);
+  const sentences = [...byCat.entries()].slice(0, 3).map(([cat, list]) => {
+    const phrase = PHRASE[cat];
+    return phrase ? phrase(listNames(list), list.length > 1) : `${CATEGORY_LABEL[cat]} from ${listNames(list)}`;
+  });
+  lines.push(`${sentences.join(". ")}.`);
 
   const reacted = heads
     .filter((h) => h.move && h.move.pct_change !== null)
     .sort((a, b) => Math.abs(b.move!.pct_change!) - Math.abs(a.move!.pct_change!))[0];
   if (reacted?.move) {
-    const vol = reacted.move.vol_ratio && reacted.move.vol_ratio >= 2 ? ` on ${reacted.move.vol_ratio.toFixed(1)}x volume` : "";
-    lines.push(`Sharpest reaction: ${reacted.symbol} ${pct(reacted.move.pct_change)}${vol} after its ${CATEGORY_LABEL[reacted.category].toLowerCase()} filing.`);
+    const change = reacted.move.pct_change!;
+    const vol = reacted.move.vol_ratio && reacted.move.vol_ratio >= 2
+      ? ` on ${reacted.move.vol_ratio.toFixed(1)} times its usual volume` : "";
+    lines.push(`The market reacted most to ${shortName(reacted.company, reacted.symbol)}, which ` +
+      `${change >= 0 ? "rose" : "fell"} ${Math.abs(change).toFixed(1)}%${vol} after its ` +
+      `${CATEGORY_LABEL[reacted.category].toLowerCase()} filing.`);
   }
   void snap;
   return lines;

@@ -1,59 +1,66 @@
 @import "tailwindcss";
 
-/* Tokens. Green and red mean direction only; cobalt is the single accent. */
+/*
+ * Editorial, not terminal: warm paper and ink, a serif for headlines, soft cards.
+ * Green and red mean direction only; terracotta is the single interface accent;
+ * charts keep their own validated blue (--chart).
+ */
 :root {
-  --bg: #f6f5f1;
-  --surface: #ffffff;
-  --sunken: #eeece6;
-  --ink: #15171c;
-  --muted: #666a73;
-  --faint: #9a9da5;
-  --line: #e2e0d8;
-  --accent: #2a50d8;
-  --accent-soft: #e6ebfb;
-  --up: #0b7a45;
-  --down: #c03226;
-  --warn: #9a6400;
+  --bg: #f7f3ec;
+  --surface: #fffdf9;
+  --sunken: #f1ebe0;
+  --ink: #1f1b16;
+  --muted: #6f675c;
+  --faint: #a1988a;
+  --line: #e9e1d4;
+  --accent: #a8481f;
+  --accent-soft: #f6e6dc;
+  --up: #1b7a4a;
+  --down: #b93a2b;
+  --warn: #94610a;
   --chart: #2a50d8;
-  --chart-soft: #d5ddf8;
+  --chart-soft: #d9dff6;
+  --shadow: 0 1px 2px rgb(60 40 20 / 0.05), 0 6px 18px rgb(60 40 20 / 0.05);
   color-scheme: light;
 }
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --bg: #0d0e10;
-    --surface: #15171a;
-    --sunken: #1b1d21;
-    --ink: #eceae4;
-    --muted: #9296a0;
-    --faint: #686c75;
-    --line: #25282d;
-    --accent: #8ea6ff;
-    --accent-soft: #1a2140;
-    --up: #3fcf8e;
-    --down: #ff7366;
-    --warn: #e0a83a;
+    --bg: #171512;
+    --surface: #201d19;
+    --sunken: #29251f;
+    --ink: #f1ebe0;
+    --muted: #a39b8e;
+    --faint: #756d61;
+    --line: #312c25;
+    --accent: #e9a37f;
+    --accent-soft: #3b2b21;
+    --up: #5fcf96;
+    --down: #ff8571;
+    --warn: #e3ad4a;
     --chart: #6d88ee;
-    --chart-soft: #2a3566;
+    --chart-soft: #2f3760;
+    --shadow: 0 1px 2px rgb(0 0 0 / 0.25);
     color-scheme: dark;
   }
 }
 
 :root[data-theme="dark"] {
-  --bg: #0d0e10;
-  --surface: #15171a;
-  --sunken: #1b1d21;
-  --ink: #eceae4;
-  --muted: #9296a0;
-  --faint: #686c75;
-  --line: #25282d;
-  --accent: #8ea6ff;
-  --accent-soft: #1a2140;
-  --up: #3fcf8e;
-  --down: #ff7366;
-  --warn: #e0a83a;
+  --bg: #171512;
+  --surface: #201d19;
+  --sunken: #29251f;
+  --ink: #f1ebe0;
+  --muted: #a39b8e;
+  --faint: #756d61;
+  --line: #312c25;
+  --accent: #e9a37f;
+  --accent-soft: #3b2b21;
+  --up: #5fcf96;
+  --down: #ff8571;
+  --warn: #e3ad4a;
   --chart: #6d88ee;
-  --chart-soft: #2a3566;
+  --chart-soft: #2f3760;
+  --shadow: 0 1px 2px rgb(0 0 0 / 0.25);
   color-scheme: dark;
 }
 
@@ -85,23 +92,37 @@ body {
   -webkit-tap-highlight-color: transparent;
 }
 
+/* Headlines are set in a serif, like a printed brief. */
+.display {
+  font-family: var(--font-display), Georgia, "Times New Roman", serif;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+}
+
+/* A card is a sheet of paper on the desk: soft edge, faint shadow, room to breathe. */
+.card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  box-shadow: var(--shadow);
+}
+
 /* Numbers line up in columns everywhere. */
 .num {
   font-variant-numeric: tabular-nums;
 }
 
-/* Tickers are the only thing set in mono: they read as identifiers, not prose. */
+/* Tickers are small supporting identifiers; the company's name leads. */
 .tick {
-  font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
-  letter-spacing: -0.02em;
+  letter-spacing: 0.01em;
 }
 
+/* Section labels read as words, not as shouted codes. */
 .label {
-  font-size: 11px;
-  line-height: 16px;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
+  font-size: 12.5px;
+  line-height: 18px;
+  font-weight: 500;
   color: var(--muted);
 }
 

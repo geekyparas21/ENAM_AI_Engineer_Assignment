@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { buildBrief, firedAlerts, headline, nearestBusyWindow, type Brief } from "@/lib/brief";
-import { CATEGORY_LABEL, dateTime, direction, istDay, pct } from "@/lib/format";
+import { CATEGORY_LABEL, dateTime, direction, greeting, istDay, pct } from "@/lib/format";
 import { update, usePrefs, type WindowKey } from "@/lib/store";
 import type { Snapshot } from "@/lib/types";
 import { FilingCard } from "./FilingCard";
@@ -58,12 +58,12 @@ function Movers({ snap, brief }: { snap: Snapshot; brief: Brief }) {
   return (
     <section aria-label="Unusual moves" className="mt-4">
       <div className="flex items-baseline justify-between">
-        <h2 className="label">Unusual moves · {alerts.length}</h2>
+        <h2 className="label">{alerts.length} unusual {alerts.length === 1 ? "move" : "moves"} in the market</h2>
         <Link href="/alerts" className="text-[12px] font-medium text-accent">All alerts</Link>
       </div>
       <ul className="no-scrollbar -mx-4 mt-1.5 flex gap-2 overflow-x-auto px-4">
         {alerts.slice(0, 8).map((a) => (
-          <li key={a.id} className="shrink-0 rounded-lg border border-line bg-surface px-3 py-2">
+          <li key={a.id} className="shrink-0 rounded-2xl border border-line bg-surface px-3.5 py-2.5">
             <p className="tick text-[13px] font-semibold">{a.symbol}</p>
             <p className={`num text-[13px] font-medium ${a.type === "price" ? direction(a.value) : "text-ink"}`}>
               {a.type === "price" ? pct(a.value) : `${a.value.toFixed(1)}x vol`}
@@ -80,7 +80,7 @@ function Routine({ brief }: { brief: Brief }) {
   const [open, setOpen] = useState(false);
   if (brief.routineCount === 0) return null;
   return (
-    <section className="mt-4 rounded-xl border border-line bg-surface">
+    <section className="mt-4 card">
       <button type="button" onClick={() => setOpen(!open)} aria-expanded={open}
         className="flex h-12 w-full items-center gap-2 px-3.5 text-left text-[14px]">
         <span><span className="num font-semibold">{brief.routineCount}</span> routine filing{brief.routineCount > 1 ? "s" : ""} hidden</span>
@@ -126,22 +126,23 @@ function Ready({ snap, source, refreshing }: { snap: Snapshot; source: string; r
   return (
     <>
       <header className="pb-3 pt-2">
-        <div className="flex items-baseline justify-between">
-          <h1 className="text-[22px] font-semibold tracking-tight">The Brief</h1>
-          <p className="num text-[12px] text-muted">
-            <span className="font-semibold text-ink">{brief.material.length + brief.seen.length}</span> of {brief.total} matter
-          </p>
-        </div>
-        <p className="num mt-0.5 text-[12px] text-muted">
-          {dateTime(brief.range.start.toISOString())} to {dateTime(brief.range.end.toISOString())} · {snap.portfolio.length} companies
+        <p className="text-[13px] font-medium text-accent">{greeting(now)}. Here is your brief.</p>
+        <h1 className="display mt-1 text-[30px] leading-9">
+          {brief.material.length + brief.seen.length === 0
+            ? "Nothing needs you right now."
+            : `${brief.material.length + brief.seen.length} of ${brief.total} filings are worth your time.`}
+        </h1>
+        <p className="num mt-1.5 text-[13px] text-muted">
+          {snap.portfolio.length} companies · {dateTime(brief.range.start.toISOString())} to {dateTime(brief.range.end.toISOString())}
         </p>
       </header>
 
       <WindowPicker snap={snap} />
 
       {lines.length > 0 && (
-        <section aria-label="Summary" className="mt-4 border-l-2 border-accent pl-3">
-          {lines.map((l) => <p key={l} className="text-[15px] leading-[22px]">{l}</p>)}
+        <section aria-label="Summary" className="mt-4 rounded-[18px] bg-sunken px-4 py-3.5">
+          <p className="label mb-1">In short</p>
+          {lines.map((l) => <p key={l} className="text-[15px] leading-[23px]">{l}</p>)}
         </section>
       )}
 
@@ -150,7 +151,7 @@ function Ready({ snap, source, refreshing }: { snap: Snapshot; source: string; r
       <section aria-label="Material filings" className="mt-4 space-y-3">
         {brief.material.map((c) => <FilingCard key={c.head.id} cluster={c} now={now} />)}
         {brief.material.length === 0 && (
-          <div className="rounded-xl border border-dashed border-line px-4 py-8 text-center">
+          <div className="rounded-[18px] border border-dashed border-line px-4 py-8 text-center">
             <p className="text-[15px] font-medium">
               {brief.seen.length > 0 ? "You are caught up." : "Quiet stretch. Nothing material in this window."}
             </p>

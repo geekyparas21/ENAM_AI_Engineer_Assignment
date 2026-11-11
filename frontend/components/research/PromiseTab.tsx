@@ -23,7 +23,7 @@ function Scorecard({ research }: { research: Research }) {
   const kept = scorecard.counts.delivered;
   const present = ORDER.filter((v) => scorecard.counts[v] > 0);
   return (
-    <section className="rounded-xl border border-line bg-surface p-3.5">
+    <section className="card p-3.5">
       <p className="label">Say-do record · last {calls.length} calls</p>
       {scorecard.settled > 0 ? (
         <p className="mt-1 text-[15px] leading-[22px]">
@@ -70,7 +70,7 @@ function Thread({ t }: { t: PromiseThread }) {
   const changed = t.initial_target && t.target.text && t.initial_target !== t.target.text;
 
   return (
-    <article className="rounded-xl border border-line bg-surface p-3.5">
+    <article className="card p-3.5">
       <header className="flex items-center gap-2">
         <span className={`flex items-center gap-1 text-[12px] font-semibold ${meta.text}`}>
           <meta.Icon width={15} height={15} />
@@ -78,7 +78,7 @@ function Thread({ t }: { t: PromiseThread }) {
         </span>
         {t.period && <span className="num ml-auto shrink-0 text-[11px] text-faint">{t.period}</span>}
       </header>
-      <h3 className="mt-1.5 text-[15px] font-medium leading-[21px]">{t.title}</h3>
+      <h3 className="display mt-1.5 text-[19px] leading-[25px]">{t.title}</h3>
 
       <dl className="mt-2 space-y-1 text-[13px] leading-[19px]">
         <div className="flex gap-2">
@@ -136,7 +136,7 @@ export function PromiseTab({ research }: { research: Research }) {
   const { threads } = research.promises;
   if (threads.length === 0) {
     return (
-      <p className="rounded-xl border border-dashed border-line px-4 py-8 text-center text-[13px] text-muted">
+      <p className="rounded-[18px] border border-dashed border-line px-4 py-8 text-center text-[13px] text-muted">
         No explicit guidance was found in the last {research.promises.calls.length || "few"} concall transcripts, so there is
         nothing to hold management to here.
       </p>

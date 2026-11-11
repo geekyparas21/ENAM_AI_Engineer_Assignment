@@ -30,7 +30,7 @@ export function Cites({ cites }: { cites: Cite[] }) {
 
 function Card({ title, children }: { title?: string; children: React.ReactNode }) {
   return (
-    <section className="rounded-xl border border-line bg-surface p-3.5">
+    <section className="card p-3.5">
       {title && <h2 className="label mb-2">{title}</h2>}
       {children}
     </section>
@@ -301,7 +301,7 @@ export function AskTab({ research }: { research: Research }) {
 
   if (!hasBackend) {
     return (
-      <p className="rounded-xl border border-dashed border-line px-4 py-8 text-center text-[13px] leading-5 text-muted">
+      <p className="rounded-[18px] border border-dashed border-line px-4 py-8 text-center text-[13px] leading-5 text-muted">
         Ask FINN answers from the filings on a server, which this build is not connected to. The other tabs work without it.
       </p>
     );
@@ -310,7 +310,7 @@ export function AskTab({ research }: { research: Research }) {
   return (
     <div className="space-y-3">
       <form onSubmit={(e) => { e.preventDefault(); void submit(question); }}
-        className="flex items-center gap-2 rounded-xl border border-line bg-surface pl-3 pr-1.5">
+        className="flex items-center gap-2 card pl-3 pr-1.5">
         <input value={question} onChange={(e) => setQuestion(e.target.value)} maxLength={400}
           placeholder={`Ask about ${research.symbol}`} aria-label={`Ask a question about ${research.name}`}
           className="h-12 min-w-0 flex-1 bg-transparent text-[16px] outline-none placeholder:text-faint" />
@@ -335,7 +335,7 @@ export function AskTab({ research }: { research: Research }) {
       )}
 
       {busy && (
-        <div className="rounded-xl border border-line bg-surface p-3.5" aria-busy="true">
+        <div className="card p-3.5" aria-busy="true">
           <p className="text-[13px] text-muted">Reading the filings…</p>
           <div className="skeleton mt-2 h-3 w-full" />
           <div className="skeleton mt-2 h-3 w-2/3" />
@@ -344,7 +344,7 @@ export function AskTab({ research }: { research: Research }) {
       {error && <p role="alert" className="rounded-lg bg-sunken px-3 py-2 text-[13px] text-warn">{error}</p>}
 
       {answers.map((a, i) => (
-        <article key={`${a.question}-${answers.length - i}`} className="rounded-xl border border-line bg-surface p-3.5">
+        <article key={`${a.question}-${answers.length - i}`} className="card p-3.5">
           <h3 className="text-[13px] font-medium text-muted">{a.question}</h3>
           {a.not_disclosed ? (
             <p className="mt-2 text-[14px] leading-[21px]">Not disclosed in the sources.</p>

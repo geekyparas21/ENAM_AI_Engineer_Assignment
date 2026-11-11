@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { useSnapshot } from "@/lib/data";
-import { dayLabel, direction, pct, price } from "@/lib/format";
+import { dayLabel, direction, pct, price, shortName } from "@/lib/format";
 import {
   buildResearch, hasBackend, loadIndex, loadResearch, wakeBackend,
   type BuildProgress, type IndexEntry, type Research,
@@ -49,7 +49,7 @@ function View({ research }: { research: Research }) {
         <button type="button" onClick={close} className="-ml-1 flex h-9 items-center gap-0.5 text-[13px] font-medium text-muted">
           <ChevronIcon width={16} height={16} className="rotate-90" />Companies
         </button>
-        <h1 className="mt-0.5 text-[22px] font-semibold leading-7 tracking-tight">{research.name}</h1>
+        <h1 className="display mt-0.5 text-[28px] leading-8">{research.name}</h1>
         <p className="num mt-0.5 text-[12px] text-muted">
           <span className="tick font-semibold text-ink">{research.symbol}</span> · read {calls} concall
           {calls === 1 ? "" : "s"}{report ? ` and the ${report.short.replace("AR ", "")} annual report` : ""}
@@ -91,7 +91,7 @@ function Building({ symbol, progress }: { symbol: string; progress: Progress | n
   return (
     <>
       <PageTitle title={symbol} sub="First visit: reading this company's filings now." />
-      <section className="rounded-xl border border-line bg-surface p-4" aria-busy="true">
+      <section className="card p-4" aria-busy="true">
         <p className="text-[15px] font-medium" aria-live="polite">{progress?.message ?? "Opening the research…"}</p>
         <div className="mt-3 h-1.5 rounded-full bg-[var(--chart-soft)]" role="progressbar" aria-valuemin={0} aria-valuemax={steps} aria-valuenow={step}>
           <div className="h-1.5 rounded-full bg-[var(--chart)] transition-[width] duration-500" style={{ width: `${Math.max(6, (100 * step) / steps)}%` }} />
@@ -132,7 +132,7 @@ function Picker({ index, holdings, notice }: { index: IndexEntry[]; holdings: Ho
     <>
       <PageTitle title="Research" sub="Any NSE ticker, answered only from its annual report and concall transcripts." />
       <form onSubmit={(e) => { e.preventDefault(); if (SYMBOL.test(q)) open(q); }}
-        className="flex h-12 items-center gap-2 rounded-xl border border-line bg-surface px-3">
+        className="flex h-12 items-center gap-2 card px-3">
         <SearchIcon className="text-muted" />
         <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="NSE ticker, e.g. KPITTECH"
           autoCapitalize="characters" autoCorrect="off" spellCheck={false} aria-label="NSE ticker"
@@ -156,15 +156,15 @@ function Picker({ index, holdings, notice }: { index: IndexEntry[]; holdings: Ho
             {index.map((e) => (
               <li key={e.symbol}>
                 <button type="button" onClick={() => open(e.symbol)}
-                  className="flex w-full items-center gap-3 rounded-xl border border-line bg-surface p-3.5 text-left">
+                  className="flex w-full items-center gap-3 card p-3.5 text-left">
                   <span className="min-w-0 flex-1">
-                    <span className="tick block text-[15px] font-semibold">{e.symbol}</span>
-                    <span className="block truncate text-[12px] text-muted">{e.name}</span>
+                    <span className="display block truncate text-[18px] leading-6">{shortName(e.name, e.symbol)}</span>
+                    <span className="tick block text-[12px] text-muted">{e.symbol}</span>
                   </span>
                   <span className="shrink-0 text-right">
                     <span className="num block text-[13px] font-medium">{e.threads} promises tracked</span>
                     <span className="num block text-[12px] text-muted">
-                      {e.kept_pct === null ? "none settled yet" : `${e.kept_pct}% of settled kept`}
+                      {e.kept_pct === null ? "none due yet" : `kept ${e.kept_pct}% of those due`}
                     </span>
                   </span>
                 </button>
@@ -175,7 +175,7 @@ function Picker({ index, holdings, notice }: { index: IndexEntry[]; holdings: Ho
       )}
 
       <h2 className="label mt-5">Your portfolio · {rows.length}</h2>
-      <ul className="mt-1.5 rounded-xl border border-line bg-surface px-3.5">
+      <ul className="mt-1.5 card px-3.5">
         {rows.map((h) => {
           const canOpen = ready.has(h.symbol) || hasBackend;
           return (
@@ -183,9 +183,9 @@ function Picker({ index, holdings, notice }: { index: IndexEntry[]; holdings: Ho
               <button type="button" disabled={!canOpen} onClick={() => open(h.symbol)}
                 className="flex h-14 w-full items-center gap-3 text-left disabled:opacity-60">
                 <span className="min-w-0 flex-1">
-                  <span className="tick block text-[14px] font-semibold">{h.symbol}</span>
+                  <span className="block truncate text-[14px] font-semibold">{shortName(h.company, h.symbol)}</span>
                   <span className="block truncate text-[12px] text-muted">
-                    {ready.has(h.symbol) ? "Research ready" : hasBackend ? `${h.sector} · researches on tap` : h.sector}
+                    {ready.has(h.symbol) ? "Research ready" : hasBackend ? `${h.sector} · tap to research` : h.sector}
                   </span>
                 </span>
                 <Spark values={h.spark} up={h.spark[h.spark.length - 1] >= h.spark[0]} />

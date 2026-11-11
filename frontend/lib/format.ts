@@ -22,6 +22,17 @@ export const CATEGORY_LABEL: Record<Category, string> = {
   unclassified: "Compliance paperwork",
 };
 
+/** "Titan Company Limited" -> "Titan Company": how a person would say it. */
+export function shortName(company: string | null | undefined, fallback: string): string {
+  const name = (company ?? "").replace(/\s+(Limited|Ltd\.?)$/i, "").replace(/\s*\(India\)/i, "").trim();
+  return name || fallback;
+}
+
+export function greeting(now: Date): string {
+  const hour = now.getHours();
+  return hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
+}
+
 export function pct(value: number | null | undefined, digits = 1): string {
   if (value === null || value === undefined || Number.isNaN(value)) return "–";
   const sign = value > 0 ? "+" : value < 0 ? "−" : "";

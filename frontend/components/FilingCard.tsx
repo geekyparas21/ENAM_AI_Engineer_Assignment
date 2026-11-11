@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import type { Cluster, Ranked } from "@/lib/brief";
-import { CATEGORY_LABEL, ago, dateTime, direction, pct } from "@/lib/format";
+import { CATEGORY_LABEL, ago, dateTime, direction, pct, shortName } from "@/lib/format";
 import { toggleMute, toggleSeen, toggleStar } from "@/lib/store";
 import { CheckIcon, ChevronIcon, InfoIcon, LinkIcon, MuteIcon, StarIcon } from "./icons";
 import { ResultsTable } from "./ResultsTable";
@@ -55,16 +55,18 @@ export function FilingCard({ cluster, now }: { cluster: Cluster; now: Date }) {
   const title = a.category === "results" && a.period ? `${a.period} results` : a.title;
 
   return (
-    <article className={`rounded-xl border border-line bg-surface p-3.5 ${a.seen ? "opacity-60" : ""}`}>
-      <header className="flex items-baseline gap-2">
-        <span className="tick text-[15px] font-semibold tracking-tight">{a.symbol}</span>
-        <span className="label">{CATEGORY_LABEL[a.category]}</span>
+    <article className={`card p-4 ${a.seen ? "opacity-60" : ""}`}>
+      <header className="flex items-center gap-2">
+        <span className="min-w-0 truncate text-[14px] font-semibold">{shortName(a.company, a.symbol)}</span>
+        <span className="shrink-0 rounded-full bg-accent-soft px-2 py-0.5 text-[11.5px] font-medium text-accent">
+          {CATEGORY_LABEL[a.category]}
+        </span>
         <time className="num ml-auto shrink-0 text-[11px] text-faint" dateTime={a.ts} title={dateTime(a.ts)}>
           {ago(a.ts, now)}
         </time>
       </header>
 
-      <h3 className="mt-1.5 line-clamp-3 text-[15px] font-medium leading-[21px]">{a.summary ?? title}</h3>
+      <h3 className="display mt-2 line-clamp-4 text-[19px] leading-[25px]">{a.summary ?? title}</h3>
       {a.summary && a.summary !== title && a.category !== "results" && (
         <p className="mt-0.5 line-clamp-1 text-[12px] text-faint">{title}</p>
       )}
