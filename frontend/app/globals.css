@@ -14,6 +14,8 @@
   --up: #0b7a45;
   --down: #c03226;
   --warn: #9a6400;
+  --chart: #2a50d8;
+  --chart-soft: #d5ddf8;
   color-scheme: light;
 }
 
@@ -31,6 +33,8 @@
     --up: #3fcf8e;
     --down: #ff7366;
     --warn: #e0a83a;
+    --chart: #6d88ee;
+    --chart-soft: #2a3566;
     color-scheme: dark;
   }
 }
@@ -48,6 +52,8 @@
   --up: #3fcf8e;
   --down: #ff7366;
   --warn: #e0a83a;
+  --chart: #6d88ee;
+  --chart-soft: #2a3566;
   color-scheme: dark;
 }
 

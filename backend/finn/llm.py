@@ -80,6 +80,17 @@ class Transient(RuntimeError):
         self.retry_after = retry_after
 
 
+class QuotaExhausted(Transient):
+    """The provider says to come back much later (a per-day free-tier limit). Retrying now is pointless."""
+
+
+# A model that reported an exhausted quota is skipped until this time (per process),
+# so one daily limit does not cost every later call four doomed attempts.
+_exhausted_until: dict[str, float] = {}
+QUOTA_COOLDOWN_SECONDS = 15 * 60
+LONG_RETRY_SECONDS = 60
+
+
 @dataclass
 class Result:
     text: str
@@ -101,9 +112,20 @@ def _post(url: str, headers: dict, body: dict) -> dict:
     except (requests.Timeout, requests.ConnectionError) as exc:
         raise Transient(str(exc)) from exc
     if resp.status_code in RETRY_STATUS:
-        retry_after = resp.headers.get("retry-after")
-        raise Transient(f"HTTP {resp.status_code}: {resp.text[:200]}",
-                        float(retry_after) if retry_after and retry_after.replace(".", "").isdigit() else None)
+        header = resp.headers.get("retry-after")
+        retry_after = float(header) if header and header.replace(".", "").isdigit() else None
+        if resp.status_code == 429:
+            # Gemini puts the wait in the error body: {"retryDelay": "36609s"}.
+            try:
+                for detail in resp.json().get("error", {}).get("details", []):
+                    delay = str(detail.get("retryDelay", ""))
+                    if delay.endswith("s") and delay[:-1].replace(".", "").isdigit():
+                        retry_after = float(delay[:-1])
+            except ValueError:
+                pass
+            if retry_after is not None and retry_after > LONG_RETRY_SECONDS:
+                raise QuotaExhausted(f"HTTP 429: quota exhausted, retry in {retry_after:.0f}s", retry_after)
+        raise Transient(f"HTTP {resp.status_code}: {resp.text[:200]}", retry_after)
     if resp.status_code != 200:
         raise LLMError(f"HTTP {resp.status_code}: {resp.text[:300]}")
     return resp.json()
@@ -233,42 +255,50 @@ def complete(conn: sqlite3.Connection, task: str, prompt: str, *, system: str | 
         return result
 
     started = time.time()
-    last: Exception | None = None
-    for attempt in range(MAX_ATTEMPTS):
-        try:
-            text, tokens_in, tokens_out = PROVIDERS[provider](model, system, prompt, json_mode, max_tokens)
-            data = parse_json(text) if json_mode else None
-            break
-        except Transient as exc:
-            last = exc
-            if attempt < MAX_ATTEMPTS - 1:
-                sleep(exc.retry_after if exc.retry_after is not None else 2.0 * (2 ** attempt))
-        except LLMError as exc:
-            last = exc  # malformed or empty reply: one more try is cheap, a wrong card is not
-            if attempt < MAX_ATTEMPTS - 1:
-                sleep(1.0)
-    else:
-        # The strong model is overloaded or rate-limited: answer with the cheap model rather
-        # than fail the user. The result records which model actually answered, and it is not
-        # cached, so the next call tries the strong model again.
-        fallback = _fallback(tier, provider, model) if isinstance(last, Transient) else None
-        if fallback is None:
-            raise LLMError(f"{task} failed after {MAX_ATTEMPTS} attempts on {model}: {last}")
-        fb_provider, fb_model = fallback
-        try:
-            text, tokens_in, tokens_out = PROVIDERS[fb_provider](fb_model, system, prompt, json_mode, max_tokens)
-            data = parse_json(text) if json_mode else None
-        except (Transient, LLMError) as exc:
-            raise LLMError(f"{task} failed on {model} ({last}) and on fallback {fb_model} ({exc})") from exc
-        result = Result(text, data, task, tier, fb_model, False, tokens_in, tokens_out,
-                        cost_usd(fb_model, tokens_in, tokens_out))
-        _log(conn, result, int((time.time() - started) * 1000))
-        return result
 
-    result = Result(text, data, task, tier, model, False, tokens_in, tokens_out,
-                    cost_usd(model, tokens_in, tokens_out))
-    conn.execute("INSERT OR REPLACE INTO llm_cache (key, task, model, response, created_at) VALUES (?, ?, ?, ?, ?)",
-                 (key, task, model, text, datetime.now(timezone.utc).isoformat(timespec="seconds")))
+    def attempt(prov: str, mod: str, attempts: int) -> tuple[str, int, int, Any]:
+        """Call one model with retry and backoff; raises the last error when every attempt fails."""
+        if _exhausted_until.get(mod, 0) > time.time():
+            raise QuotaExhausted(f"{mod} quota was exhausted moments ago; not retrying yet")
+        last: Exception = LLMError("no attempt made")
+        for n in range(attempts):
+            try:
+                text, tokens_in, tokens_out = PROVIDERS[prov](mod, system, prompt, json_mode, max_tokens)
+                return text, tokens_in, tokens_out, (parse_json(text) if json_mode else None)
+            except QuotaExhausted as exc:
+                _exhausted_until[mod] = time.time() + QUOTA_COOLDOWN_SECONDS
+                raise exc
+            except Transient as exc:
+                last = exc
+                if n < attempts - 1:
+                    sleep(min(exc.retry_after, 30.0) if exc.retry_after is not None else 2.0 * (2 ** n))
+            except LLMError as exc:
+                last = exc  # malformed or empty reply: one more try is cheap, a wrong card is not
+                if n < attempts - 1:
+                    sleep(1.0)
+        raise last
+
+    used = model
+    try:
+        text, tokens_in, tokens_out, data = attempt(provider, model, MAX_ATTEMPTS)
+    except (Transient, LLMError) as first:
+        # The strong model is overloaded or out of quota: answer with the cheap model rather
+        # than fail the user. The result records which model actually answered, and it is not
+        # cached, so a later call tries the strong model again.
+        fallback = _fallback(tier, provider, model) if isinstance(first, Transient) else None
+        if fallback is None:
+            raise LLMError(f"{task} failed after {MAX_ATTEMPTS} attempts on {model}: {first}") from first
+        try:
+            text, tokens_in, tokens_out, data = attempt(fallback[0], fallback[1], 3)
+        except (Transient, LLMError) as second:
+            raise LLMError(f"{task} failed on {model} ({str(first)[:80]}) and on fallback {fallback[1]} "
+                           f"({str(second)[:120]})") from second
+        used = fallback[1]
+
+    result = Result(text, data, task, tier, used, False, tokens_in, tokens_out, cost_usd(used, tokens_in, tokens_out))
+    if used == model:
+        conn.execute("INSERT OR REPLACE INTO llm_cache (key, task, model, response, created_at) VALUES (?, ?, ?, ?, ?)",
+                     (key, task, model, text, datetime.now(timezone.utc).isoformat(timespec="seconds")))
     _log(conn, result, int((time.time() - started) * 1000))
     return result
 

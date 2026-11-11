@@ -119,13 +119,21 @@ def locate_quote(quote: str, pages: list[dict], claimed: int | None) -> int | No
     """
     by_number = {p["page"]: p["text"] for p in pages}
 
-    def score(page: int) -> float:
+    def single(page: int) -> float:
+        return quote_match(quote, by_number.get(page, ""))
+
+    def spanning(page: int) -> float:
         return quote_match(quote, by_number.get(page, "") + " " + by_number.get(page + 1, ""))
 
-    if claimed in by_number and score(claimed) >= QUOTE_MATCH:
+    # A page that holds the whole quote always wins, so the citation points at the right page.
+    if claimed in by_number and single(claimed) >= QUOTE_MATCH:
         return claimed
-    best = max(by_number, key=score, default=None)
-    if best is not None and score(best) >= QUOTE_MATCH:
+    best = max(by_number, key=single, default=None)
+    if best is not None and single(best) >= QUOTE_MATCH:
+        return best
+    # Otherwise the quote may run over a page break: cite the page it starts on.
+    best = max(by_number, key=spanning, default=None)
+    if best is not None and spanning(best) >= QUOTE_MATCH:
         return best
     return None
 
@@ -303,8 +311,8 @@ def judge(conn: sqlite3.Connection, docs: list[dict], statements: list[dict], ac
             verdict = "in_progress"  # a part-year figure cannot settle a full-year target
         if verdict in ("delivered", "missed") and keys and not on_period and period_key(period):
             verdict = "in_progress"  # the figure is for a different period than the target
-        if verdict != "in_progress" or (keys and not on_period):
-            progress = None  # no ahead/behind call on a target whose own period has no figures yet
+        if verdict != "in_progress" or not on_period:
+            progress = None  # ahead/behind needs a reported figure for the target's own period
 
         evidence = _text(item.get("evidence"), 400) or ""
 

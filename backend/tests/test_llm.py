@@ -137,3 +137,18 @@ def test_cheap_tier_has_no_fallback(conn, fake):
     replies.extend([llm.Transient("HTTP 503")] * llm.MAX_ATTEMPTS)
     with pytest.raises(llm.LLMError):
         llm.complete(conn, "classify", "p", sleep=lambda s: None)
+
+
+def test_exhausted_daily_quota_skips_retries_and_goes_to_fallback(conn, fake):
+    calls, replies = fake
+    llm._exhausted_until.clear()
+    replies.extend([llm.QuotaExhausted("HTTP 429", retry_after=36000), ('{"from": "cheap"}', 30, 5)])
+    waits: list[float] = []
+    result = llm.complete(conn, "qa", "q1", sleep=waits.append)
+    assert result.model == "small" and waits == []          # no pointless waiting on a per-day limit
+    assert [m for m, _ in calls] == ["large", "small"]
+    # while the cooldown lasts, the exhausted model is not even tried
+    replies.append(('{"from": "cheap"}', 30, 5))
+    llm.complete(conn, "qa", "q2", sleep=waits.append)
+    assert [m for m, _ in calls] == ["large", "small", "small"]
+    llm._exhausted_until.clear()

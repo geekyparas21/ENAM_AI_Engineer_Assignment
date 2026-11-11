@@ -34,3 +34,11 @@ export const WarnIcon = (p: P) => (
   <Base {...p}><path d="M12 4 2.8 19h18.4L12 4Z" /><path d="M12 10v4M12 16.8v.2" /></Base>
 );
 export const InfoIcon = (p: P) => (<Base {...p}><circle cx="12" cy="12" r="8.5" /><path d="M12 11v5M12 7.8v.2" /></Base>);
+export const XIcon = (p: P) => (<Base {...p}><path d="m6.5 6.5 11 11M17.5 6.5l-11 11" /></Base>);
+export const ClockIcon = (p: P) => (<Base {...p}><circle cx="12" cy="12" r="8.5" /><path d="M12 7.5V12l3 2" /></Base>);
+export const ShiftIcon = (p: P) => (<Base {...p}><path d="M4 8h13M13 4l4 4-4 4M20 16H7M11 12l-4 4 4 4" /></Base>);
+export const FadeIcon = (p: P) => (<Base {...p}><path d="M4 12h4M11 12h3M17 12h1.5M21 12h.1" /></Base>);
+export const HelpIcon = (p: P) => (
+  <Base {...p}><circle cx="12" cy="12" r="8.5" /><path d="M9.6 9.6a2.5 2.5 0 1 1 3.6 2.3c-.8.4-1.2 1-1.2 1.8M12 16.6v.2" /></Base>
+);
+export const SendIcon = (p: P) => (<Base {...p}><path d="M5 12h13M13 6l6 6-6 6" /></Base>);
