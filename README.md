@@ -25,6 +25,9 @@ Built for the ENAM Holdings AI Engineer Build Challenge, 8–15 November 2026.
    ₹6,700–7,000 cr one call later: Moved the goalposts.
 6. **Ask FINN** on any researched company. Every sentence carries its source page; ask
    something the filings cannot answer and it says "Not disclosed in the sources."
+7. **[`/health`](https://enam-ai-engineer-assignment.vercel.app/health)** to see how current
+   the data is: last successful ingest, how many hours ago, filing counts, and the last
+   ingestion error if there was one.
 
 ## The product point of view
 
@@ -157,14 +160,23 @@ research files. For Ask FINN and first-time research, start the backend and put
 `NEXT_PUBLIC_API_URL=http://localhost:8000` in `frontend/.env.local`.
 
 - Research a ticker from the command line: `python ingest/research.py TATAPOWER`
-- Tests (77, all offline): `cd backend && python -m pytest -q`
+- Tests (80, all offline): `cd backend && python -m pytest -q` (must be run from `backend/`)
 - Check which models a key can reach: `cd backend && python -m finn.llm --check`
 
 ## Deployment
 
 - **Frontend:** Vercel, root directory `frontend`, redeployed on every push to `main`.
-- **Backend:** `render.yaml` is a Render blueprint (free tier). Set `GEMINI_API_KEY` there
-  and `NEXT_PUBLIC_API_URL` on Vercel.
+- **Backend:** live at `https://finn-api-j8z0.onrender.com`, deployed from `render.yaml`
+  (Render free tier), with `NEXT_PUBLIC_API_URL` pointing at it on Vercel. It exists for Ask
+  FINN and building research for a ticker that is not pre-built — the things that need a
+  model key and network at request time.
+  It is **not** a fresher source of the Brief. The free instance has no persistent disk, so
+  `GET /api/health` reports `has_db: false` and `load_snapshot()` falls back to the committed
+  `data/snapshot.json` — the same file the frontend already bundles. The app asks it for a
+  newer snapshot on load and keeps its own when the answer matches, which is the normal case.
+  Ingestion is GitHub Actions' job, never the API's: the API never calls an exchange during a
+  request. Free instances also sleep after inactivity and can take ~50s to wake; the app
+  renders the bundled snapshot first and never blocks on the API.
 - **Scheduled ingestion:** `.github/workflows/ingest.yml` refreshes the snapshot twice a day
   — 13:00 UTC (18:30 IST, after the close) and 18:00 UTC (23:30 IST) on weekdays — and commits
   it, which triggers the Vercel redeploy that puts it live. The database and document cache
@@ -172,11 +184,14 @@ research files. For Ask FINN and first-time research, start the backend and put
   to get model-written cards; without it the run still refreshes prices, filings and ranking,
   and results cards come from the screener fallback. Use **Actions → Ingest → Run workflow**
   to refresh on demand.
-- **Health check:** `GET /health` on the deployed site reports `status` (`ok`, `stale` or
-  `degraded`), `last_successful_ingest`, `ingest_age_hours`, `item_count`, `material_count`,
-  `latest_filing_ts` and `last_error`. `status` is `stale` once the last successful ingest is
-  over 24h old and `degraded` when the last run recorded an error, so a blocked exchange is
-  visible without opening the workflow log.
+- **Health checks:** two, answering different questions.
+  - [`/health`](https://enam-ai-engineer-assignment.vercel.app/health) on the site asks *is
+    the data current?* — `status` (`ok`, `stale` or `degraded`), `last_successful_ingest`,
+    `ingest_age_hours`, `item_count`, `material_count`, `latest_filing_ts` and `last_error`.
+    `stale` once the last successful ingest is over 24h old, `degraded` when the last run
+    recorded an error, so a blocked exchange shows without opening the workflow log.
+  - `/api/health` on the Render API asks *is the API up?* — `ok`, `has_db`, `has_snapshot`.
+    It says nothing about data freshness; `/health` is the one to check for that.
 
 ## Known limitations
 
@@ -198,7 +213,12 @@ research files. For Ask FINN and first-time research, start the backend and put
   appointments, and FINN shows it when present. The web-search enrichment is not built.
 - **Push is in-app.** There is no Telegram or web-push channel, and no voice query.
 - **Free-tier limits.** The strong model's 20 requests a day runs out quickly; the fallback
-  keeps the app working on the cheap model.
+  keeps the app working on the cheap model. The Render instance sleeps after inactivity and
+  can take ~50s to wake, which is longer than the app's 45s live-snapshot timeout — so the
+  first load after a quiet spell may label the footer "saved snapshot · backend did not
+  respond" even though nothing is broken. The Brief, Alerts and pre-built research render
+  from the bundled snapshot first and never wait on the API; only Ask FINN and building a new
+  ticker's research actually need it awake.
 - **Stale snapshot between ingestion runs.** The Brief is as fresh as the last committed
   snapshot; its header shows the exact window and the footer the last successful ingest.
 - **Single user.** Preferences live in the browser; there are no accounts.
