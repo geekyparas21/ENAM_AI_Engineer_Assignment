@@ -160,7 +160,7 @@ research files. For Ask FINN and first-time research, start the backend and put
 `NEXT_PUBLIC_API_URL=http://localhost:8000` in `frontend/.env.local`.
 
 - Research a ticker from the command line: `python ingest/research.py TATAPOWER`
-- Tests (80, all offline): `cd backend && python -m pytest -q` (must be run from `backend/`)
+- Tests (83, all offline): `cd backend && python -m pytest -q` (must be run from `backend/`)
 - Check which models a key can reach: `cd backend && python -m finn.llm --check`
 
 ## Deployment
@@ -183,7 +183,11 @@ research files. For Ask FINN and first-time research, start the backend and put
   persist between runs so nothing is processed twice. Add a `GEMINI_API_KEY` repository secret
   to get model-written cards; without it the run still refreshes prices, filings and ranking,
   and results cards come from the screener fallback. Use **Actions → Ingest → Run workflow**
-  to refresh on demand.
+  to refresh on demand. A green check means the data actually refreshed: the fetch step is
+  `continue-on-error`, so the final step fails the job when the run recorded an ingestion
+  error, rather than passing every step while committing nothing. A quiet day with no new
+  filings is still a pass. The failure is committed before the job goes red, so `/health`
+  reports it on the live site.
 - **Health checks:** two, answering different questions.
   - [`/health`](https://enam-ai-engineer-assignment.vercel.app/health) on the site asks *is
     the data current?* — `status` (`ok`, `stale` or `degraded`), `last_successful_ingest`,

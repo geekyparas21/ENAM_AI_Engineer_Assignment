@@ -124,6 +124,32 @@ def build(conn: sqlite3.Connection) -> dict:
     }
 
 
+def refresh_ingest_meta(conn: sqlite3.Connection) -> bool:
+    """Update only the ingest block of the snapshot already on disk.
+
+    A run that could not reach a source has no new data to publish, but it must still
+    report why. Without this the failure is invisible: the snapshot keeps its old
+    ingest block and /health goes on saying "ok" over data nothing refreshed.
+    """
+    if not SNAPSHOT_PATH.exists():
+        return False
+    snap = json.loads(SNAPSHOT_PATH.read_text(encoding="utf-8"))
+    attempted = db.get_meta(conn, "last_fetch_attempted_at")
+    # A runner starts with an empty database, so a failed run knows of no successful
+    # fetch. That is ignorance, not evidence, and it must not erase the real time the
+    # data last landed — which is the one figure /health and the footer are built on.
+    previous_ok = (snap.get("ingest") or {}).get("last_ok_at")
+    snap["ingest"] = {
+        "last_ok_at": db.get_meta(conn, "last_fetch_ok_at") or previous_ok,
+        "last_attempted_at": attempted,
+        # No attempt recorded at all means the fetch step itself did not finish.
+        "last_error": (db.get_meta(conn, "last_fetch_error") or None) if attempted
+                      else "the fetch step did not complete",
+    }
+    write(snap)
+    return True
+
+
 def write(snapshot: dict) -> None:
     text = json.dumps(snapshot, ensure_ascii=False, separators=(",", ":"))
     for path in (SNAPSHOT_PATH, FRONTEND_SNAPSHOT_PATH):

@@ -31,8 +31,11 @@ def main() -> int:
     with db.session() as conn:
         if conn.execute("SELECT COUNT(*) c FROM announcements").fetchone()["c"] == 0:
             # Sources were unreachable on a fresh database: keep the snapshot we have
-            # rather than publish an empty one.
+            # rather than publish an empty one. Still record why, or the failure is
+            # invisible and /health keeps reporting "ok" over data nothing refreshed.
             print("no filings in the database; leaving the existing snapshot untouched")
+            if snapshot.refresh_ingest_meta(conn):
+                print("recorded this run's ingest status so /health reports it")
             return 0
         counts = snapshot.classify_pending(conn)
         conn.commit()

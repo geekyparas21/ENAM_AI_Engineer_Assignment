@@ -286,3 +286,45 @@ strictly newer, so an equal reply left `source` as "bundled" and the label fell 
 "saved snapshot": the one phrase reserved for a fetch that failed, shown after a fetch that
 succeeded. A reply that matches what we hold still confirms the data is current, so the
 source is now "live" on any successful fetch and only the payload stays conditional.
+
+**Follow-up: the first real run went green and did nothing**
+
+With the guard removed and workflow permissions set to read-and-write, run #5 reported
+Success in 34 seconds and changed nothing. The GitHub API told the rest (the repo is
+public, so runs and job steps are readable unauthenticated; the log *download* endpoint
+still needs a token):
+
+- Runs #1–#4 are all `conclusion: skipped`, event `schedule`. That is the never-set
+  `FINN_INGEST_ENABLED` guard, confirmed from GitHub's own records rather than inferred
+  from the absence of commits.
+- In run #5 the per-step timings give it away: fetch 6s, classify/export 0s, commit 0s.
+  A real fetch is minutes — twenty yfinance calls and a 17,479-row feed. Six seconds is a
+  fast failure, and the 0s export is `process.py` taking its `COUNT(*) == 0` early return.
+
+**Two faults this exposed, both ours**
+
+- *A green check meant nothing.* The fetch step is `continue-on-error: true` so that a
+  blocked exchange keeps the previous snapshot instead of publishing an empty one. The
+  cost was that every step passed, nothing was committed, and the run looked healthy. The
+  final step now fails the job when the snapshot records an ingestion error. A quiet day
+  with no new filings is still a pass — only a recorded error fails.
+- *The failure was invisible to `/health`, which the README claimed it would not be.*
+  `process.py` returns before rebuilding the snapshot when the database has no filings, so
+  the error `fetch.py` had written to the database never reached the snapshot and `/health`
+  went on reporting `ok` over three-day-old data. `refresh_ingest_meta` now rewrites just
+  the ingest block in that path. It is committed *before* the job goes red, so the reason
+  reaches the live site.
+
+**What the fix got wrong first.** The initial version read `last_fetch_ok_at` from the
+database and wrote it straight in. A runner starts with an empty database and so knows of
+no successful fetch — so a failed run set `last_ok_at` to null and erased the real time the
+data last landed, which is the one figure the footer and `/health` are built on. Ignorance
+is not evidence: the previous value is kept when the database has none. Three tests cover
+the path (83 total), and they redirect both snapshot paths — the first attempt at this
+simulation wrote through to the repo's own `frontend/public/snapshot.json`, because
+`snapshot.write()` writes the frontend copy too and that path ignores `FINN_DATA_DIR`.
+
+**Still unknown: why the fetch failed.** Six seconds points at NSE refusing the runner,
+which is the risk the whole-market feed was meant to reduce rather than remove. Prices come
+from Yahoo and should survive a datacenter IP. The next run will say which, in the step log
+and in `/health`.

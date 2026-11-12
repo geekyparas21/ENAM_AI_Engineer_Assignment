@@ -58,19 +58,6 @@ jobs:
           FINN_STRONG_MODEL: gemini:gemini-3.5-flash
         run: python ingest/process.py
 
-      - name: Report what the snapshot now holds
-        run: |
-          python - <<'PY'
-          import json, pathlib
-          s = json.loads(pathlib.Path("data/snapshot.json").read_text(encoding="utf-8"))
-          ing = s.get("ingest") or {}
-          print("generated_at   :", s["generated_at"])
-          print("as_of          :", s["as_of"])
-          print("filings        :", len(s["announcements"]))
-          print("last ingest ok :", ing.get("last_ok_at"))
-          print("last error     :", ing.get("last_error") or "none")
-          PY
-
       - name: Commit the snapshot if it changed
         run: |
           git config user.name "finn-ingest"
@@ -86,3 +73,29 @@ jobs:
             git commit -m "Refresh snapshot"
             git push
           fi
+
+      # Runs after the commit on purpose: a failed ingestion still records its reason in the
+      # snapshot, and that record has to reach the live site before the job goes red.
+      #
+      # A green check must mean "the data actually refreshed". The fetch step is
+      # continue-on-error, so without this a blocked exchange produced a run that passed
+      # every step, committed nothing, and looked perfectly healthy. A quiet day with no new
+      # filings is still a pass; only a recorded ingestion error fails the job.
+      - name: Report what the snapshot holds, and fail if ingestion did not work
+        if: always()
+        run: |
+          python - <<'PY'
+          import json, pathlib, sys
+          s = json.loads(pathlib.Path("data/snapshot.json").read_text(encoding="utf-8"))
+          ing = s.get("ingest") or {}
+          err = ing.get("last_error")
+          print("generated_at   :", s["generated_at"])
+          print("as_of          :", s["as_of"])
+          print("filings        :", len(s["announcements"]))
+          print("last ingest ok :", ing.get("last_ok_at"))
+          print("last attempt   :", ing.get("last_attempted_at"))
+          print("last error     :", err or "none")
+          if err:
+              print(f"::error::Ingestion did not succeed: {err}")
+              sys.exit(1)
+          PY

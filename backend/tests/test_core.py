@@ -192,3 +192,62 @@ class TestPriceRows:
 
     def test_every_close_missing_yields_no_rows_rather_than_null_rows(self, monkeypatch):
         assert self._fetch(monkeypatch, [float("nan"), float("nan")]) == []
+
+
+class TestIngestReporting:
+    """A run that cannot reach a source has no new data to publish, but must still say so.
+    Without this the snapshot keeps its old ingest block and /health reports "ok" over data
+    that nothing refreshed — a silent failure behind a green workflow check."""
+
+    @staticmethod
+    def _isolate(tmp_path, monkeypatch):
+        import json
+        from finn import db, snapshot
+        monkeypatch.setenv("FINN_DATA_DIR", str(tmp_path))
+        sp, fp = tmp_path / "snapshot.json", tmp_path / "frontend.json"
+        monkeypatch.setattr(snapshot, "SNAPSHOT_PATH", sp)
+        monkeypatch.setattr(snapshot, "FRONTEND_SNAPSHOT_PATH", fp)
+        monkeypatch.setattr(db, "DB_PATH", tmp_path / "finn.db", raising=False)
+        sp.write_text(json.dumps({
+            "generated_at": "2026-11-12T21:07:45+00:00",
+            "as_of": {"prices": None, "announcements": None, "last_session": None},
+            "ingest": {"last_ok_at": "2026-11-12T21:06:38+00:00",
+                       "last_attempted_at": "2026-11-12T21:06:38+00:00", "last_error": None},
+            "announcements": [{"id": "a"}, {"id": "b"}],
+        }), encoding="utf-8")
+        return sp
+
+    def test_a_blocked_run_records_its_error_without_discarding_the_data(self, tmp_path, monkeypatch):
+        import json
+        from finn import db, snapshot
+        sp = self._isolate(tmp_path, monkeypatch)
+        with db.session() as conn:
+            db.set_meta(conn, "last_fetch_attempted_at", "2026-11-13T12:00:00+00:00")
+            db.set_meta(conn, "last_fetch_error", "all-market feed: NSE 403")
+            conn.commit()
+            assert snapshot.refresh_ingest_meta(conn) is True
+        out = json.loads(sp.read_text(encoding="utf-8"))
+        assert out["ingest"]["last_error"] == "all-market feed: NSE 403"
+        assert out["ingest"]["last_attempted_at"] == "2026-11-13T12:00:00+00:00"
+        assert len(out["announcements"]) == 2, "a failed run must not empty the snapshot"
+
+    def test_a_failed_run_does_not_erase_the_last_successful_ingest(self, tmp_path, monkeypatch):
+        # A runner starts with an empty database and so knows of no successful fetch.
+        # That ignorance must not overwrite the real time the data last landed.
+        import json
+        from finn import db, snapshot
+        sp = self._isolate(tmp_path, monkeypatch)
+        with db.session() as conn:
+            db.set_meta(conn, "last_fetch_attempted_at", "2026-11-13T12:00:00+00:00")
+            db.set_meta(conn, "last_fetch_error", "NSE 403")
+            conn.commit()
+            snapshot.refresh_ingest_meta(conn)
+        assert json.loads(sp.read_text(encoding="utf-8"))["ingest"]["last_ok_at"] == "2026-11-12T21:06:38+00:00"
+
+    def test_a_fetch_step_that_never_ran_is_itself_the_error(self, tmp_path, monkeypatch):
+        import json
+        from finn import db, snapshot
+        sp = self._isolate(tmp_path, monkeypatch)
+        with db.session() as conn:
+            snapshot.refresh_ingest_meta(conn)
+        assert json.loads(sp.read_text(encoding="utf-8"))["ingest"]["last_error"] == "the fetch step did not complete"
