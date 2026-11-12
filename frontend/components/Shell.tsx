@@ -1,7 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { useSnapshot } from "@/lib/data";
+import { apiBase, useSnapshot } from "@/lib/data";
 import { dateTime } from "@/lib/format";
 import type { Snapshot } from "@/lib/types";
 
@@ -29,22 +29,49 @@ export function Skeletons({ count = 3 }: { count?: number }) {
   );
 }
 
-export function DataStamp({ snap, source, refreshing }: { snap: Snapshot; source: string; refreshing: boolean }) {
-  const at = snap.as_of.announcements ?? snap.generated_at;
+/**
+ * The time shown is the last successful ingestion, not when the file was written, so a run
+ * that failed to reach the exchange cannot advance it.
+ *
+ * "saved snapshot" is reserved for a live fetch that genuinely failed, and carries the
+ * reason. With no backend configured the committed snapshot IS the current data — the
+ * scheduled job refreshes it twice a day — so calling it a fallback would be a lie.
+ */
+export function DataStamp({ snap, source, refreshing, liveError }: {
+  snap: Snapshot; source: string; refreshing: boolean; liveError?: string | null;
+}) {
+  const at = snap.ingest?.last_ok_at ?? snap.as_of.announcements ?? snap.generated_at;
+  const ingestError = snap.ingest?.last_error;
+
+  let label: string;
+  if (source === "live") label = "live";
+  else if (liveError) label = `saved snapshot · ${liveError}`;
+  else if (!apiBase) label = "refreshed twice daily";
+  else label = "saved snapshot";
+
   return (
-    <p className="num text-[11px] text-faint">
-      Data as of {dateTime(at)} IST · {source === "live" ? "live" : "saved snapshot"}
-      {refreshing ? " · checking for newer…" : ""}
-    </p>
+    <>
+      <p className="num text-[11px] text-faint">
+        Data as of {dateTime(at)} IST · {label}
+        {refreshing ? " · checking for newer…" : ""}
+      </p>
+      {ingestError && (
+        <p className="num text-[11px] text-faint">
+          Last ingestion reported: {ingestError}
+        </p>
+      )}
+    </>
   );
 }
 
 /** Loading, error and ready states in one place, so every screen handles all three. */
 export function WithSnapshot({ children }: {
-  children: (snap: Snapshot, meta: { source: string; refreshing: boolean }) => ReactNode;
+  children: (snap: Snapshot, meta: {
+    source: string; refreshing: boolean; liveError: string | null;
+  }) => ReactNode;
 }) {
-  const { data, error, source, refreshing } = useSnapshot();
-  if (data) return <>{children(data, { source, refreshing })}</>;
+  const { data, error, source, refreshing, liveError } = useSnapshot();
+  if (data) return <>{children(data, { source, refreshing, liveError })}</>;
   if (error) {
     return (
       <div className="card p-4 text-[14px]">

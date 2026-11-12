@@ -165,16 +165,29 @@ research files. For Ask FINN and first-time research, start the backend and put
 - **Frontend:** Vercel, root directory `frontend`, redeployed on every push to `main`.
 - **Backend:** `render.yaml` is a Render blueprint (free tier). Set `GEMINI_API_KEY` there
   and `NEXT_PUBLIC_API_URL` on Vercel.
-- **Scheduled ingestion:** `.github/workflows/ingest.yml` refreshes the snapshot after the
-  close and three more times a day, and commits it; the database and document cache persist
-  between runs so nothing is processed twice. It is opt-in: add a `GEMINI_API_KEY` repository
-  secret, then set the repository variable `FINN_INGEST_ENABLED` to `true`.
+- **Scheduled ingestion:** `.github/workflows/ingest.yml` refreshes the snapshot twice a day
+  — 13:00 UTC (18:30 IST, after the close) and 18:00 UTC (23:30 IST) on weekdays — and commits
+  it, which triggers the Vercel redeploy that puts it live. The database and document cache
+  persist between runs so nothing is processed twice. Add a `GEMINI_API_KEY` repository secret
+  to get model-written cards; without it the run still refreshes prices, filings and ranking,
+  and results cards come from the screener fallback. Use **Actions → Ingest → Run workflow**
+  to refresh on demand.
+- **Health check:** `GET /health` on the deployed site reports `status` (`ok`, `stale` or
+  `degraded`), `last_successful_ingest`, `ingest_age_hours`, `item_count`, `material_count`,
+  `latest_filing_ts` and `last_error`. `status` is `stale` once the last successful ingest is
+  over 24h old and `degraded` when the last run recorded an error, so a blocked exchange is
+  visible without opening the workflow log.
 
 ## Known limitations
 
-- **Sources can block cloud IPs.** NSE and BSE are reachable from a laptop; from GitHub or
-  Render they may refuse. Ingestion then keeps the previous snapshot, and live research for
-  a new ticker reports the failure. The six pre-built companies always work.
+- **Sources can block cloud IPs.** NSE is reachable from a laptop; from GitHub or Render it
+  may refuse. Announcements now take NSE's whole-market feed in one request rather than 20
+  per-symbol calls, which gives it one chance to rate-limit instead of twenty, but a block is
+  still possible. Ingestion then keeps the previous snapshot, records the reason in
+  `ingest.last_error`, and `/health` reports `degraded`. BSE is not a fallback: its API
+  answers 403 to datacenter and residential requests alike, with or without session priming.
+- **Stale-data empty state.** If the chosen window has no filings the Brief widens to the
+  nearest window that does and says so, rather than showing a blank page.
 - **Two results PDFs cannot be read.** HDFC Bank's file is truncated on NSE's own server and
   Deepak Nitrite's is an image-only scan; both cards use screener's table and say so. There
   is no OCR.
@@ -187,7 +200,7 @@ research files. For Ask FINN and first-time research, start the backend and put
 - **Free-tier limits.** The strong model's 20 requests a day runs out quickly; the fallback
   keeps the app working on the cheap model.
 - **Stale snapshot between ingestion runs.** The Brief is as fresh as the last committed
-  snapshot; its header shows the exact window.
+  snapshot; its header shows the exact window and the footer the last successful ingest.
 - **Single user.** Preferences live in the browser; there are no accounts.
 
 ## More

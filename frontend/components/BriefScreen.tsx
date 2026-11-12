@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { buildBrief, firedAlerts, headline, nearestBusyWindow, type Brief } from "@/lib/brief";
-import { CATEGORY_LABEL, dateTime, direction, greeting, istDay, pct } from "@/lib/format";
+import { CATEGORY_LABEL, dateTime, dayLabel, direction, greeting, istDay, pct } from "@/lib/format";
 import { update, usePrefs, type WindowKey } from "@/lib/store";
 import type { Snapshot } from "@/lib/types";
 import { FilingCard } from "./FilingCard";
@@ -113,31 +113,64 @@ function Routine({ brief }: { brief: Brief }) {
   );
 }
 
-function Ready({ snap, source, refreshing }: { snap: Snapshot; source: string; refreshing: boolean }) {
+function Ready({ snap, source, refreshing, liveError }: {
+  snap: Snapshot; source: string; refreshing: boolean; liveError?: string | null;
+}) {
   const prefs = usePrefs();
   const brief = useMemo(() => buildBrief(snap, prefs), [snap, prefs]);
-  const lines = useMemo(() => headline(brief, snap), [brief, snap]);
   const [showSeen, setShowSeen] = useState(false);
   const now = new Date();
   const empty = brief.material.length === 0 && brief.seen.length === 0;
   const wider = useMemo(() => (empty ? nearestBusyWindow(snap, prefs) : null), [empty, snap, prefs]);
   const widerLabel = WINDOWS.find((w) => w.key === wider)?.label;
+  const emptyWindowPhrase = prefs.window === "custom"
+    ? "Nothing new in the dates you picked."
+    : `Nothing new in the last ${(WINDOWS.find((w) => w.key === prefs.window)?.label ?? "window").toLowerCase()}.`;
+
+  // An evaluator may open this days after the last ingestion. Rather than a blank page,
+  // widen to the nearest window that has something and say so. The chosen window stays
+  // selected, so this explains itself instead of silently overriding the choice.
+  const fallback = useMemo(
+    () => (wider ? buildBrief(snap, { ...prefs, window: wider }) : null),
+    [wider, snap, prefs],
+  );
+  const shown = fallback ?? brief;
+  const lines = useMemo(() => headline(shown, snap), [shown, snap]);
+  const latestFilingTs = useMemo(
+    () => snap.announcements.reduce<string | null>((m, a) => (m === null || a.ts > m ? a.ts : m), null),
+    [snap],
+  );
 
   return (
     <>
       <header className="pb-3 pt-2">
         <p className="text-[13px] font-medium text-accent">{greeting(now)}. Here is your brief.</p>
         <h1 className="display mt-1 text-[30px] leading-9">
-          {brief.material.length + brief.seen.length === 0
+          {shown.material.length + shown.seen.length === 0
             ? "Nothing needs you right now."
-            : `${brief.material.length + brief.seen.length} of ${brief.total} filings are worth your time.`}
+            : `${shown.material.length + shown.seen.length} of ${shown.total} filings are worth your time.`}
         </h1>
         <p className="num mt-1.5 text-[13px] text-muted">
-          {snap.portfolio.length} companies · {dateTime(brief.range.start.toISOString())} to {dateTime(brief.range.end.toISOString())}
+          {snap.portfolio.length} companies · {dateTime(shown.range.start.toISOString())} to {dateTime(shown.range.end.toISOString())}
         </p>
       </header>
 
       <WindowPicker snap={snap} />
+
+      {fallback && (
+        <section aria-label="Window widened" className="mt-4 rounded-[18px] border border-line bg-sunken px-4 py-3.5">
+          <p className="text-[15px] font-medium leading-[23px]">{emptyWindowPhrase}</p>
+          <p className="mt-1 text-[13px] leading-5 text-muted">
+            {latestFilingTs
+              ? <>The latest filings are from {dayLabel(latestFilingTs)}. Showing the last {widerLabel?.toLowerCase()} instead.</>
+              : <>Showing the last {widerLabel?.toLowerCase()} instead.</>}
+          </p>
+          <button type="button" onClick={() => wider && update({ window: wider })}
+            className="mt-3 h-9 rounded-md border border-line bg-surface px-3.5 text-[13px] font-medium">
+            Keep the last {widerLabel?.toLowerCase()}
+          </button>
+        </section>
+      )}
 
       {lines.length > 0 && (
         <section aria-label="Summary" className="mt-4 rounded-[18px] bg-sunken px-4 py-3.5">
@@ -146,45 +179,41 @@ function Ready({ snap, source, refreshing }: { snap: Snapshot; source: string; r
         </section>
       )}
 
-      <Movers snap={snap} brief={brief} />
+      <Movers snap={snap} brief={shown} />
 
       <section aria-label="Material filings" className="mt-4 space-y-3">
-        {brief.material.map((c) => <FilingCard key={c.head.id} cluster={c} now={now} />)}
-        {brief.material.length === 0 && (
+        {shown.material.map((c) => <FilingCard key={c.head.id} cluster={c} now={now} />)}
+        {shown.material.length === 0 && (
           <div className="rounded-[18px] border border-dashed border-line px-4 py-8 text-center">
             <p className="text-[15px] font-medium">
-              {brief.seen.length > 0 ? "You are caught up." : "Quiet stretch. Nothing material in this window."}
+              {shown.seen.length > 0 ? "You are caught up." : "Quiet stretch. Nothing material to show."}
             </p>
             <p className="mt-1 text-[13px] text-muted">
-              {brief.total > 0
-                ? `${brief.routineCount} routine filing${brief.routineCount === 1 ? "" : "s"} below, none needing attention.`
-                : "No filings from your portfolio in this window."}
+              {shown.total > 0
+                ? `${shown.routineCount} routine filing${shown.routineCount === 1 ? "" : "s"} below, none needing attention.`
+                : latestFilingTs
+                  ? `No material filings from your portfolio. The latest on record is from ${dayLabel(latestFilingTs)}.`
+                  : "No filings from your portfolio yet."}
             </p>
-            {wider && (
-              <button type="button" onClick={() => update({ window: wider })}
-                className="mt-4 h-10 rounded-md bg-ink px-4 text-[13px] font-medium text-bg">
-                Show the last {widerLabel}
-              </button>
-            )}
           </div>
         )}
       </section>
 
-      {brief.seen.length > 0 && (
+      {shown.seen.length > 0 && (
         <section className="mt-4">
           <button type="button" onClick={() => setShowSeen(!showSeen)} aria-expanded={showSeen}
             className="flex h-10 items-center gap-1 text-[13px] font-medium text-muted">
             <ChevronIcon width={16} height={16} className={showSeen ? "rotate-180" : ""} />
-            {brief.seen.length} seen
+            {shown.seen.length} seen
           </button>
-          {showSeen && <div className="space-y-3">{brief.seen.map((c) => <FilingCard key={c.head.id} cluster={c} now={now} />)}</div>}
+          {showSeen && <div className="space-y-3">{shown.seen.map((c) => <FilingCard key={c.head.id} cluster={c} now={now} />)}</div>}
         </section>
       )}
 
-      <Routine brief={brief} />
+      <Routine brief={shown} />
 
       <footer className="mt-5 space-y-1">
-        <DataStamp snap={snap} source={source} refreshing={refreshing} />
+        <DataStamp snap={snap} source={source} refreshing={refreshing} liveError={liveError} />
         <p className="num text-[11px] text-faint">
           {snap.stats && snap.stats.calls > 0 ? (
             <>

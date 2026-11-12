@@ -17,9 +17,17 @@ interface State {
   source: Source;
   error: string | null;
   refreshing: boolean;
+  /**
+   * Why we are not showing live data. "none" = no backend is configured, so the committed
+   * snapshot IS the current data and must not be labelled a stale fallback. Set to a reason
+   * only when a live fetch was actually attempted and failed.
+   */
+  liveError: string | null;
 }
 
-let state: State = { data: null, source: "bundled", error: null, refreshing: false };
+let state: State = {
+  data: null, source: "bundled", error: null, refreshing: false, liveError: null,
+};
 let started = false;
 const listeners = new Set<() => void>();
 
@@ -51,10 +59,15 @@ async function load() {
   try {
     const live = await fetchJson(`${API}/api/snapshot`, 45000);
     if (!state.data || live.generated_at > state.data.generated_at) {
-      set({ data: live, source: "live", error: null });
+      set({ data: live, source: "live", error: null, liveError: null });
+    } else {
+      set({ liveError: null });
     }
-  } catch {
-    // Backend asleep or down: keep showing the snapshot, which is labelled with its time.
+  } catch (err) {
+    // Backend asleep or down: keep showing the snapshot, and record why, so the stamp can
+    // say "live check failed" instead of silently implying the data is merely saved.
+    const e = err as Error;
+    set({ liveError: e.name === "AbortError" ? "backend did not respond" : `backend returned ${e.message}` });
   } finally {
     set({ refreshing: false });
   }

@@ -107,6 +107,13 @@ def build(conn: sqlite3.Connection) -> dict:
             "announcements": db.get_meta(conn, "announcements_fetched_at"),
             "last_session": max((p["date"] for p in portfolio if p["date"]), default=None),
         },
+        # Ingest health, so /health and the "data as of" line can tell a successful
+        # refresh apart from a blocked one without reading the workflow log.
+        "ingest": {
+            "last_ok_at": db.get_meta(conn, "last_fetch_ok_at"),
+            "last_attempted_at": db.get_meta(conn, "last_fetch_attempted_at"),
+            "last_error": db.get_meta(conn, "last_fetch_error") or None,
+        },
         "material_threshold": MATERIAL_THRESHOLD,
         "defaults": DEFAULT_SETTINGS,
         "portfolio": portfolio,

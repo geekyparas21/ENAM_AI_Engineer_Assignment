@@ -2,7 +2,13 @@
 
 NSE needs a browser-like session: load the homepage once to receive cookies, then
 call the JSON API with the same session. BSE's API refused our requests outright
-(403), so NSE is the primary source; see docs/BUILD_LOG.md.
+(403, re-confirmed from a residential IP with and without homepage priming), so NSE
+is the only source; see docs/BUILD_LOG.md.
+
+Prefer `all_announcements`: the same endpoint without a `symbol` returns the whole
+market for the date range in ONE request, which we filter locally. Twenty per-symbol
+calls give NSE twenty chances to rate-limit a datacenter IP; one call gives it one.
+`announcements` remains as the per-symbol fallback.
 """
 from __future__ import annotations
 
@@ -34,29 +40,46 @@ class NSEClient:
         self.session.get(HOME, timeout=30).raise_for_status()
         self._primed = True
 
-    def announcements(self, symbol: str, start: date, end: date) -> list[dict]:
+    def _fetch(self, params: dict, what: str, timeout: int) -> list[dict]:
         if not self._primed:
             self._prime()
-        params = {
-            "index": "equities",
-            "symbol": symbol,
-            "from_date": start.strftime("%d-%m-%Y"),
-            "to_date": end.strftime("%d-%m-%Y"),
-        }
         last_exc: Exception | None = None
         for attempt in range(3):
             try:
-                resp = self.session.get(API, params=params, timeout=30)
+                resp = self.session.get(API, params=params, timeout=timeout)
                 if resp.status_code in (401, 403):
                     self._prime()  # cookie expired: refresh once and retry
                     raise requests.HTTPError(f"NSE {resp.status_code}")
                 resp.raise_for_status()
                 time.sleep(self.pause)
-                return [normalise(row) for row in resp.json()]
+                # The all-market feed carries thousands of rows from across the exchange.
+                # One unparseable date there must not cost us the whole fetch.
+                out = []
+                for row in resp.json():
+                    try:
+                        out.append(normalise(row))
+                    except Exception:  # noqa: BLE001,PERF203
+                        continue
+                return out
             except Exception as exc:  # noqa: BLE001 - retried, then surfaced
                 last_exc = exc
                 time.sleep(1.5 * (attempt + 1))
-        raise RuntimeError(f"NSE announcements failed for {symbol}: {last_exc}")
+        raise RuntimeError(f"NSE announcements failed for {what}: {last_exc}")
+
+    def all_announcements(self, start: date, end: date) -> list[dict]:
+        """Every equity filing in the range, in one request. Filter to a portfolio locally."""
+        return self._fetch(
+            {"index": "equities",
+             "from_date": start.strftime("%d-%m-%Y"),
+             "to_date": end.strftime("%d-%m-%Y")},
+            "the whole market", timeout=90)
+
+    def announcements(self, symbol: str, start: date, end: date) -> list[dict]:
+        return self._fetch(
+            {"index": "equities", "symbol": symbol,
+             "from_date": start.strftime("%d-%m-%Y"),
+             "to_date": end.strftime("%d-%m-%Y")},
+            symbol, timeout=30)
 
 
 def normalise(row: dict) -> dict:

@@ -185,3 +185,84 @@ broke. Newest session last.
 
 - 77 unit tests, all offline. Research tabs, Ask FINN and a first-time build were driven
   through the real UI at 375px in both themes with no layout overflow.
+
+## Session 3 — 13 Nov 2026 — the live site had stopped updating
+
+**Symptom.** The Brief read "Data as of 10 Nov, 23:50 IST · saved snapshot" and the 24h
+window was blank. The deployed snapshot was three days old.
+
+**Cause: three independent faults, each sufficient on its own.**
+
+1. *The scheduled job had never run once.* The workflow was committed guarded by
+   `if: ${{ vars.FINN_INGEST_ENABLED == 'true' }}`, and that repository variable was never
+   set, so every scheduled trigger evaluated the guard and skipped the job. Confirmed from
+   history rather than inferred: `git log --author=finn-ingest` and
+   `git log --grep="Refresh snapshot"` are both empty, and `frontend/public/snapshot.json`
+   had not been touched since the commit that added the workflow. A guard meant as a
+   temporary safety became the reason nothing ever refreshed.
+2. *Every price fetch was failing* with `NOT NULL constraint failed: prices.close`. Yahoo
+   publishes the newest session's volume before its close has settled, so 12 Nov came back
+   with `Volume` 13.7M and `Close` NaN. That row passed the existing `Volume > 0` filter,
+   and `store_prices` inserts with one `executemany`, so the single bad row failed the whole
+   batch — for all 20 symbols. The code already guarded `prev_close`, `pct_change` and
+   `avg_vol_20` against NaN but never `close` itself, because a session without a close had
+   not been anticipated. This would have broken the job even with the guard removed.
+3. *The empty window was real, not a rendering bug.* The window ends at the last successful
+   fetch (10 Nov 23:50 IST) and the newest filing on record was 9 Nov 18:11 IST, so the 24h
+   span held nothing. 8 Nov was a Sunday and 10 Nov had no filings. Replaying the old
+   snapshot through `buildBrief` reproduces `total=0, material=0, seen=0` exactly.
+
+**Decisions**
+
+- **One whole-market request, not twenty per-symbol ones.** The same NSE endpoint without a
+  `symbol` returns every equity filing for the range — 17,479 rows, of which 274 are the
+  portfolio's — which we filter locally. Twenty requests give NSE twenty chances to
+  rate-limit a datacenter IP; one gives it one. The per-symbol path is kept as the fallback,
+  and the all-market parse skips individual unreadable rows so one malformed date somewhere
+  in the exchange cannot cost the whole fetch.
+- **BSE is not a fallback, and the brief's suggestion to make it the primary source cannot
+  be followed.** Re-tested this session from a residential IP, plain and with homepage
+  priming as NSE needs: `api.bseindia.com` answers 403 both ways. Session 1's finding stands.
+  Prices come from Yahoo, which does not block datacenter IPs, so a blocked NSE costs
+  announcements only.
+- **An unsettled close is dropped, not stored.** The row is removed before the shift and
+  rolling maths, so a NaN close cannot become the next day's `prev_close` or dilute the
+  20-day volume baseline. Three regression tests cover it, including that the day after a
+  dropped row still computes its change against the last real close.
+- **A failed run must not advance the clock.** `as_of` is only stamped for a source that
+  actually succeeded, and the run now records `last_fetch_ok_at`, `last_fetch_attempted_at`
+  and `last_fetch_error` into the snapshot's `ingest` block. The footer reads the last
+  *successful* ingest, so a blocked run cannot make the data look fresher than it is.
+- **"saved snapshot" was a misleading label.** It showed on every page load, because with no
+  backend configured no live fetch is ever attempted. It is now reserved for a live fetch
+  that genuinely failed and carries the reason; with no backend the line reads "refreshed
+  twice daily", which is what the committed snapshot actually is.
+- **An empty window widens itself instead of going blank.** The Brief falls back to the
+  nearest window that has something, states "Nothing new in the last 24h. The latest filings
+  are from 9 Nov. Showing the last 3 days instead.", and leaves the chosen window selected
+  so the widening explains itself rather than silently overriding the choice. An evaluator
+  opening the app days later sees filings, not emptiness.
+- **Twice a day, on weekdays, in UTC.** 13:00 UTC (18:30 IST, after the close) and 18:00 UTC
+  (23:30 IST). `workflow_dispatch` was already present for an on-demand refresh before a demo.
+
+**What broke while fixing it**
+
+- *`export const dynamic = "force-static"` does not build under Next.js 16 with
+  `cacheComponents`*: the config is rejected outright. Per `migrating-to-cache-components.md`
+  the replacement is a `use cache` helper, and the directive cannot sit on the `GET` export
+  itself. Only the snapshot read is cached; the staleness age is computed per request, so
+  "how old is this data" is answered when asked rather than when built.
+
+**Verified**
+
+- 80 backend tests pass (77 before, 3 new for the price fix).
+- The refreshed snapshot holds 294 filings, up from 271: the 23 from 11 and 12 Nov that the
+  stale snapshot was missing. Latest filing 12 Nov 20:23 IST, `ingest.last_error: null`.
+- The 24h window now holds 11 filings, 2 material, where it held 0.
+- Replaying the *old* snapshot through the new frontend confirms the fallback engages: 24h
+  empty → widens to 3 days → 9 filings, 1 material, with the banner.
+- `/health` returns `status: "ok"`, `ingest_age_hours: 0.1`, `item_count: 294`. `/`, `/alerts`
+  and `/health` all serve 200 with no server errors.
+- Not visually checked in a browser this session: no browser tooling was available, and the
+  built-in browser cannot reach a locally started server. The window arithmetic and the
+  fallback were verified by running the real `buildBrief` against both snapshots instead.

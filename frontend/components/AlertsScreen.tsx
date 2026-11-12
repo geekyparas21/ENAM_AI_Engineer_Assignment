@@ -73,7 +73,9 @@ function FilingAlert({ a }: { a: Announcement }) {
   );
 }
 
-function Ready({ snap, source, refreshing }: { snap: Snapshot; source: string; refreshing: boolean }) {
+function Ready({ snap, source, refreshing, liveError }: {
+  snap: Snapshot; source: string; refreshing: boolean; liveError?: string | null;
+}) {
   const { settings, mutes } = usePrefs();
   const end = new Date(snap.as_of.announcements ?? snap.generated_at);
   const start = new Date(end.getTime() - LOOKBACK_DAYS * 86400_000);
@@ -112,7 +114,7 @@ function Ready({ snap, source, refreshing }: { snap: Snapshot; source: string; r
           No filings in your followed types this week. Choose types in Settings.
         </p>
       )}
-      <div className="mt-5"><DataStamp snap={snap} source={source} refreshing={refreshing} /></div>
+      <div className="mt-5"><DataStamp snap={snap} source={source} refreshing={refreshing} liveError={liveError} /></div>
     </>
   );
 }

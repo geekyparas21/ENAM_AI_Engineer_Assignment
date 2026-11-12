@@ -153,3 +153,42 @@ class TestSizeAwareRanking:
         unknown, _, _ = score("litigation", None, "", "2026-11-05T11:00:00+05:30", {}, "NCLAT set aside the order.")
         assert small == 30.0 and "under ₹1 crore" in reasons[-1]
         assert large == 75.0 and unknown == 75.0
+
+
+class TestPriceRows:
+    """Yahoo publishes the newest session's volume before its close settles. That row has
+    Volume > 0 and Close NaN, and storing it violates prices.close NOT NULL, which used to
+    fail the whole symbol's executemany and so lose every price in the run."""
+
+    @staticmethod
+    def _frame(closes):
+        import pandas as pd
+        idx = pd.to_datetime([f"2026-11-{d:02d} 00:00:00+05:30" for d in range(2, 2 + len(closes))])
+        return pd.DataFrame(
+            {"Open": [100.0] * len(closes), "High": [101.0] * len(closes),
+             "Low": [99.0] * len(closes), "Close": closes, "Adj Close": closes,
+             "Volume": [1_000] * len(closes), "Dividends": [0.0] * len(closes),
+             "Stock Splits": [0.0] * len(closes)},
+            index=idx,
+        )
+
+    def _fetch(self, monkeypatch, closes):
+        from finn.sources import prices
+        frame = self._frame(closes)
+        monkeypatch.setattr(prices.yf, "Ticker",
+                            lambda _sym: type("T", (), {"history": lambda _s, **_k: frame})())
+        return prices.fetch_prices("RELIANCE")
+
+    def test_an_unsettled_close_is_dropped_not_stored_as_null(self, monkeypatch):
+        rows = self._fetch(monkeypatch, [100.0, 102.0, float("nan")])
+        assert [r["date"] for r in rows] == ["2026-11-02", "2026-11-03"]
+        assert all(r["close"] is not None and r["close"] == r["close"] for r in rows)
+
+    def test_a_dropped_row_does_not_become_the_next_days_prev_close(self, monkeypatch):
+        rows = self._fetch(monkeypatch, [100.0, float("nan"), 110.0])
+        last = rows[-1]
+        assert last["date"] == "2026-11-04" and last["prev_close"] == 100.0
+        assert last["pct_change"] == 10.0
+
+    def test_every_close_missing_yields_no_rows_rather_than_null_rows(self, monkeypatch):
+        assert self._fetch(monkeypatch, [float("nan"), float("nan")]) == []

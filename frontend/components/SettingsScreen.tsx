@@ -23,7 +23,9 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   );
 }
 
-function Ready({ snap, source, refreshing }: { snap: Snapshot; source: string; refreshing: boolean }) {
+function Ready({ snap, source, refreshing, liveError }: {
+  snap: Snapshot; source: string; refreshing: boolean; liveError?: string | null;
+}) {
   const prefs = usePrefs();
   const followed = prefs.settings.alert_categories;
   const mutes = Object.keys(prefs.mutes);
@@ -96,7 +98,7 @@ function Ready({ snap, source, refreshing }: { snap: Snapshot; source: string; r
         <p className="text-[13px] text-muted">
           {snap.portfolio.length} companies · {snap.announcements.length} filings stored · last session {snap.as_of.last_session}
         </p>
-        <div className="mt-1"><DataStamp snap={snap} source={source} refreshing={refreshing} /></div>
+        <div className="mt-1"><DataStamp snap={snap} source={source} refreshing={refreshing} liveError={liveError} /></div>
         <button type="button" disabled={triaged === 0} onClick={() => update({ seen: {}, starred: {} })}
           className="mt-3 h-10 rounded-md border border-line px-3 text-[13px] font-medium disabled:opacity-40">
           Clear seen and starred ({triaged})

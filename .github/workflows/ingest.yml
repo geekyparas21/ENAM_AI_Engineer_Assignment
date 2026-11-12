@@ -5,8 +5,10 @@ name: Ingest
 # the job keeps the previous snapshot rather than publishing an empty one.
 on:
   schedule:
-    - cron: "30 11 * * 1-5"    # 17:00 IST on trading days, after the close
-    - cron: "0 3,7,15 * * *"   # 08:30, 12:30 and 20:30 IST for announcements
+    # Cron is UTC. 13:00 UTC = 18:30 IST (after the close), 18:00 UTC = 23:30 IST
+    # (catches filings made through the evening).
+    - cron: "0 13 * * 1-5"
+    - cron: "0 18 * * 1-5"
   workflow_dispatch:
 
 permissions:
@@ -18,9 +20,6 @@ concurrency:
 
 jobs:
   ingest:
-    # Opt-in: runs only once the repository variable FINN_INGEST_ENABLED is 'true' and the
-    # GEMINI_API_KEY secret is set. Without the key the model-written cards would be lost.
-    if: ${{ vars.FINN_INGEST_ENABLED == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
@@ -42,16 +41,35 @@ jobs:
           key: finn-data-${{ github.run_id }}
           restore-keys: finn-data-
 
+      # Announcements come from NSE's whole-market feed in one request (filtered to the
+      # portfolio locally), falling back to per-symbol calls. Prices come from Yahoo, which
+      # does not block datacenter IPs. A blocked NSE is recorded in the snapshot's
+      # ingest.last_error and surfaced by /health rather than failing silently.
       - name: Fetch prices and announcements
         run: python ingest/fetch.py --days 30
         continue-on-error: true
 
+      # Runs with or without a model key: without one the model steps are skipped and
+      # results cards come from the screener fallback, so the snapshot still refreshes.
       - name: Classify, enrich, rank and export
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           FINN_CHEAP_MODEL: gemini:gemini-3.5-flash-lite
           FINN_STRONG_MODEL: gemini:gemini-3.5-flash
         run: python ingest/process.py
+
+      - name: Report what the snapshot now holds
+        run: |
+          python - <<'PY'
+          import json, pathlib
+          s = json.loads(pathlib.Path("data/snapshot.json").read_text(encoding="utf-8"))
+          ing = s.get("ingest") or {}
+          print("generated_at   :", s["generated_at"])
+          print("as_of          :", s["as_of"])
+          print("filings        :", len(s["announcements"]))
+          print("last ingest ok :", ing.get("last_ok_at"))
+          print("last error     :", ing.get("last_error") or "none")
+          PY
 
       - name: Commit the snapshot if it changed
         run: |

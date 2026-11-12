@@ -15,7 +15,13 @@ def fetch_prices(symbol: str, period: str = "6mo") -> list[dict]:
     hist = yf.Ticker(f"{symbol}.NS").history(period=period, interval="1d", auto_adjust=False)
     if hist.empty:
         return []
-    hist = hist[hist["Volume"] > 0]
+    # Yahoo publishes the newest session's volume before its close has settled, giving a
+    # row with Volume > 0 but Close NaN. Such a row is not a session we can store or chart,
+    # and dropping it before the shift/rolling maths keeps it out of the next day's
+    # prev_close and the 20-day volume baseline.
+    hist = hist[(hist["Volume"] > 0) & hist["Close"].notna()]
+    if hist.empty:
+        return []
     prev_close = hist["Close"].shift(1)
     pct = (hist["Close"] / prev_close - 1.0) * 100.0
     avg20 = hist["Volume"].shift(1).rolling(20).mean()

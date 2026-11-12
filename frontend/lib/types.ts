@@ -94,6 +94,12 @@ export interface Settings {
 export interface Snapshot {
   generated_at: string;
   as_of: { prices: string | null; announcements: string | null; last_session: string | null };
+  /** Ingest health. Absent in snapshots built before this was recorded. */
+  ingest?: {
+    last_ok_at: string | null;
+    last_attempted_at: string | null;
+    last_error: string | null;
+  } | null;
   material_threshold: number;
   defaults: Settings;
   portfolio: Holding[];
