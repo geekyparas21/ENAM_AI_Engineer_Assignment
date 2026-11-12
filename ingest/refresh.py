@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -22,10 +23,17 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 SNAPSHOTS = ["data/snapshot.json", "frontend/public/snapshot.json"]
 
+# A Windows console defaults to cp1252, which cannot encode "₹" and raises
+# UnicodeEncodeError mid-run. Forced here, and passed to the child processes below, so this
+# works from any shell without the caller having to remember an environment variable.
+for stream in (sys.stdout, sys.stderr):
+    stream.reconfigure(encoding="utf-8", errors="replace")
+CHILD_ENV = {**os.environ, "PYTHONUTF8": "1", "PYTHONIOENCODING": "utf-8"}
+
 
 def step(title: str, args: list[str]) -> int:
     print(f"\n=== {title} ===", flush=True)
-    return subprocess.call(args, cwd=ROOT)
+    return subprocess.call(args, cwd=ROOT, env=CHILD_ENV)
 
 
 def git(*args: str, capture: bool = False) -> str | int:
