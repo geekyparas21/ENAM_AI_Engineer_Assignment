@@ -77,8 +77,7 @@ function View({ research }: { research: Research }) {
 
       <footer className="mt-5">
         <p className="num text-[11px] leading-4 text-faint">
-          Researched {dayLabel(research.generated_at)} · {research.usage.tokens.toLocaleString("en-IN")} model tokens
-          {research.usage.cost_usd !== null ? ` · $${research.usage.cost_usd.toFixed(2)} at list price, free tier used` : ""}
+          Researched {dayLabel(research.generated_at)}
         </p>
       </footer>
     </>
