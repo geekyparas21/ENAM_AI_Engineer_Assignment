@@ -266,3 +266,13 @@ window was blank. The deployed snapshot was three days old.
 - Not visually checked in a browser this session: no browser tooling was available, and the
   built-in browser cannot reach a locally started server. The window arithmetic and the
   fallback were verified by running the real `buildBrief` against both snapshots instead.
+
+**Follow-up the same session: a fourth fault, caught before it bit**
+
+The commit step tagged its message `Refresh snapshot [skip ci]`. This workflow has no
+`push` trigger, so that token prevented no loop, while several hosts — Vercel among them —
+read it as "skip the build". Committing the snapshot is the *only* way refreshed data
+reaches the live site, so the tag risked a job that ran green, committed correctly, and
+still never updated the site. Removed. Vercel's current docs could not be reached to
+confirm the token is still honoured, so this is a removed risk rather than a proven bug;
+either way the tag had no upside here.
