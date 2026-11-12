@@ -2,13 +2,21 @@ name: Ingest
 
 # Refresh prices and filings, rebuild the snapshot, and commit it. Vercel redeploys on the
 # push, so the live Brief follows the data without a backend. If a source blocks the runner
-# the job keeps the previous snapshot rather than publishing an empty one.
+# the job keeps the previous snapshot rather than publishing an empty one, and records why.
+#
+# THE SCHEDULE IS DELIBERATELY OFF. NSE returns 403 to GitHub's runners — not to the API
+# but to the homepage that issues the session cookie, so the block is on the IP range and no
+# header or retry changes it (run #6 on 2b13fa0 is the evidence; BSE refuses every IP we
+# tried, so it is not an alternative). A cron here could only fail twice a day forever and
+# mail a failure each time. Refresh with `python ingest/refresh.py` from a machine on a home
+# connection, which is what the README documents.
+#
+# To put the schedule back, uncomment it and point `runs-on` at a self-hosted runner on such
+# a connection; nothing else here needs to change.
 on:
-  schedule:
-    # Cron is UTC. 13:00 UTC = 18:30 IST (after the close), 18:00 UTC = 23:30 IST
-    # (catches filings made through the evening).
-    - cron: "0 13 * * 1-5"
-    - cron: "0 18 * * 1-5"
+  # schedule:
+  #   - cron: "0 13 * * 1-5"   # 18:30 IST, after the close
+  #   - cron: "0 18 * * 1-5"   # 23:30 IST
   workflow_dispatch:
 
 permissions:

@@ -328,3 +328,35 @@ simulation wrote through to the repo's own `frontend/public/snapshot.json`, beca
 which is the risk the whole-market feed was meant to reduce rather than remove. Prices come
 from Yahoo and should survive a datacenter IP. The next run will say which, in the step log
 and in `/health`.
+
+**Resolved: NSE blocks GitHub's runners. Scheduled cloud ingestion is not possible.**
+
+Run #6 on `2b13fa0` failed exactly as the new reporting intended, and named the cause:
+
+```
+Ingestion did not succeed: all-market feed: 403 Client Error: Forbidden for url: https://www.nseindia.com/
+```
+
+The 403 is on the **homepage**, not the API — the request that issues the session cookie,
+before any data call. That makes it an IP-range block on the runner, not something a header,
+a referer or a retry can get past. With BSE refusing every IP tried, there is no cloud path
+to filings. Prices are unaffected: Yahoo does not block datacenter IPs.
+
+Two useful things came out of the failure itself. The error annotation was precise enough to
+diagnose from the summary page alone, and the whole observability chain worked end to end:
+the failed run committed the reason, Vercel redeployed, and `/health` went to `degraded`
+carrying the 403 — while `last_successful_ingest` stayed at 12 Nov 21:06 and `item_count`
+stayed at 294. The run that failed did not cost us the data or the record of when it last
+landed, which is exactly what the preservation fix was for.
+
+**Decision: refresh by hand, and keep the workflow honest about it.** `ingest/refresh.py` is
+one command — fetch, process, commit, push — run from a home connection. It stages only the
+two snapshot files so it cannot sweep up work in progress, and exits non-zero on an ingestion
+error, the same rule the workflow uses. The cron in `ingest.yml` is commented out rather than
+deleted: left enabled it could only fail twice a day forever and mail a failure each time,
+and deleted it would lose the working configuration for a self-hosted runner, where it needs
+no other change. `workflow_dispatch` stays.
+
+A note on what GitHub's UI made confusing: "Re-run all jobs" replays the *original commit*,
+so four attempts on run #5 kept running the pre-fix code and kept reporting success. Only a
+fresh **Run workflow** picks up new code. Worth knowing before trusting a green check.

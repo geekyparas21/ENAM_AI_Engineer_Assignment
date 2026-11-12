@@ -177,17 +177,33 @@ research files. For Ask FINN and first-time research, start the backend and put
   Ingestion is GitHub Actions' job, never the API's: the API never calls an exchange during a
   request. Free instances also sleep after inactivity and can take ~50s to wake; the app
   renders the bundled snapshot first and never blocks on the API.
-- **Scheduled ingestion:** `.github/workflows/ingest.yml` refreshes the snapshot twice a day
-  — 13:00 UTC (18:30 IST, after the close) and 18:00 UTC (23:30 IST) on weekdays — and commits
-  it, which triggers the Vercel redeploy that puts it live. The database and document cache
-  persist between runs so nothing is processed twice. Add a `GEMINI_API_KEY` repository secret
-  to get model-written cards; without it the run still refreshes prices, filings and ranking,
-  and results cards come from the screener fallback. Use **Actions → Ingest → Run workflow**
-  to refresh on demand. A green check means the data actually refreshed: the fetch step is
-  `continue-on-error`, so the final step fails the job when the run recorded an ingestion
-  error, rather than passing every step while committing nothing. A quiet day with no new
+- **Refreshing the data:** one command, from a machine on a home connection:
+
+  ```bash
+  python ingest/refresh.py          # fetch, process, commit and push
+  python ingest/refresh.py --no-push  # stop after writing the snapshot
+  ```
+
+  It stages only the two snapshot files, prints what landed, and exits non-zero if ingestion
+  recorded an error. The push is what publishes: Vercel redeploys on the commit.
+
+  **Why this is not on a schedule.** NSE answers a home connection but returns 403 to GitHub's
+  runners — at the homepage that issues the session cookie, so the block is on the IP range
+  and no header or retry gets past it. BSE refuses every IP tried, with or without session
+  priming, so it is not an alternative. A cron in Actions could only fail twice a day forever,
+  so the schedule in `.github/workflows/ingest.yml` is commented out and the workflow is kept
+  for **Actions → Ingest → Run workflow** and for a self-hosted runner, where it would work
+  unchanged. Prices come from Yahoo, which does not block datacenter IPs; it is filings that
+  need the home connection.
+
+  When the workflow does run, a green check means the data actually refreshed: the fetch step
+  is `continue-on-error` so a blocked source keeps the previous snapshot, and the final step
+  then fails the job rather than passing while committing nothing. A quiet day with no new
   filings is still a pass. The failure is committed before the job goes red, so `/health`
-  reports it on the live site.
+  reports the reason on the live site. The database and document cache persist between runs,
+  so nothing is processed twice. A `GEMINI_API_KEY` gets model-written cards; without one the
+  run still refreshes prices, filings and ranking, with results cards from the screener
+  fallback.
 - **Health checks:** two, answering different questions.
   - [`/health`](https://enam-ai-engineer-assignment.vercel.app/health) on the site asks *is
     the data current?* — `status` (`ok`, `stale` or `degraded`), `last_successful_ingest`,
@@ -199,12 +215,15 @@ research files. For Ask FINN and first-time research, start the backend and put
 
 ## Known limitations
 
-- **Sources can block cloud IPs.** NSE is reachable from a laptop; from GitHub or Render it
-  may refuse. Announcements now take NSE's whole-market feed in one request rather than 20
-  per-symbol calls, which gives it one chance to rate-limit instead of twenty, but a block is
-  still possible. Ingestion then keeps the previous snapshot, records the reason in
-  `ingest.last_error`, and `/health` reports `degraded`. BSE is not a fallback: its API
-  answers 403 to datacenter and residential requests alike, with or without session priming.
+- **Ingestion cannot run in the cloud.** NSE returns 403 to GitHub's runners, at the homepage
+  that issues the session cookie, so it is an IP-range block no header or retry gets past;
+  BSE refuses every IP tried. Announcements take NSE's whole-market feed in one request rather
+  than 20 per-symbol calls, which cut the exposure but could not remove it. Filings therefore
+  refresh by `python ingest/refresh.py` from a home connection, not on a schedule. When a
+  source is blocked the run keeps the previous snapshot, records the reason in
+  `ingest.last_error`, fails loudly, and `/health` reports `degraded` — the data is never
+  silently stale. A second source, a residential proxy or a self-hosted runner is what would
+  make this unattended.
 - **Stale-data empty state.** If the chosen window has no filings the Brief widens to the
   nearest window that does and says so, rather than showing a blank page.
 - **Two results PDFs cannot be read.** HDFC Bank's file is truncated on NSE's own server and
