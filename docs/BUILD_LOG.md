@@ -276,3 +276,13 @@ reaches the live site, so the tag risked a job that ran green, committed correct
 still never updated the site. Removed. Vercel's current docs could not be reached to
 confirm the token is still honoured, so this is a removed risk rather than a proven bug;
 either way the tag had no upside here.
+
+**Follow-up: "saved snapshot" showed even when the live check had succeeded**
+
+Reported from the live footer after the deploy. `NEXT_PUBLIC_API_URL` is set on Vercel to
+the Render backend, which is up, and it deploys from the same repo — so it answered with a
+`generated_at` *identical* to the bundled snapshot. The swap was gated on the reply being
+strictly newer, so an equal reply left `source` as "bundled" and the label fell through to
+"saved snapshot": the one phrase reserved for a fetch that failed, shown after a fetch that
+succeeded. A reply that matches what we hold still confirms the data is current, so the
+source is now "live" on any successful fetch and only the payload stays conditional.

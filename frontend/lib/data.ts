@@ -58,11 +58,11 @@ async function load() {
   set({ refreshing: true });
   try {
     const live = await fetchJson(`${API}/api/snapshot`, 45000);
-    if (!state.data || live.generated_at > state.data.generated_at) {
-      set({ data: live, source: "live", error: null, liveError: null });
-    } else {
-      set({ liveError: null });
-    }
+    // A reply that merely matches what we already have still confirms the data is current,
+    // so the source is "live" either way. Only the payload is conditional: we swap it when
+    // the backend is genuinely ahead, and keep ours when it is not.
+    const newer = !state.data || live.generated_at > state.data.generated_at;
+    set({ data: newer ? live : state.data, source: "live", error: null, liveError: null });
   } catch (err) {
     // Backend asleep or down: keep showing the snapshot, and record why, so the stamp can
     // say "live check failed" instead of silently implying the data is merely saved.
